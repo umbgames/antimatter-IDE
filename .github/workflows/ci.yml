@@ -19,7 +19,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -39,7 +38,7 @@ jobs:
             librsvg2-dev
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Typecheck workspace
         run: npm run typecheck --workspaces --if-present
