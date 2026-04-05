@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.antimatter.ide",
   "build": {
-    "beforeDevCommand": "npm run dev -w apps/desktop",
-    "beforeBuildCommand": "npm run build -w apps/desktop",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
   },
