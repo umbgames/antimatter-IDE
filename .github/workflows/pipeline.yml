@@ -1,117 +1,117 @@
-name: Pipeline
+# name: Pipeline
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-  workflow_dispatch:
+# on:
+#   push:
+#     branches:
+#       - main
+#   pull_request:
+#   workflow_dispatch:
 
-permissions:
-  contents: write
+# permissions:
+#   contents: write
 
-jobs:
-  verify:
-    name: Verify workspace
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+# jobs:
+#   verify:
+#     name: Verify workspace
+#     runs-on: ubuntu-22.04
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+#       - name: Setup Node.js
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: 20
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+#       - name: Setup Rust
+#         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Linux build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+#       - name: Install Linux build dependencies
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y \
+#             libwebkit2gtk-4.1-dev \
+#             build-essential \
+#             curl \
+#             wget \
+#             file \
+#             libxdo-dev \
+#             libssl-dev \
+#             libayatana-appindicator3-dev \
+#             librsvg2-dev
 
-      - name: Install dependencies
-        run: npm install
+#       - name: Install dependencies
+#         run: npm install
 
-      - name: Typecheck workspace
-        run: npm run typecheck --workspaces --if-present
+#       - name: Typecheck workspace
+#         run: npm run typecheck --workspaces --if-present
 
-      - name: Build workspace
-        run: npm run build --workspaces --if-present
+#       - name: Build workspace
+#         run: npm run build --workspaces --if-present
 
-      - name: Cargo check desktop shell
-        working-directory: apps/desktop/src-tauri
-        run: cargo check
+#       - name: Cargo check desktop shell
+#         working-directory: apps/desktop/src-tauri
+#         run: cargo check
 
-  release:
-    name: Release Desktop App
-    needs: verify
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            args: ''
-          - platform: ubuntu-22.04
-            args: ''
-          - platform: windows-latest
-            args: ''
+#   release:
+#     name: Release Desktop App
+#     needs: verify
+#     if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         include:
+#           - platform: macos-latest
+#             args: ''
+#           - platform: ubuntu-22.04
+#             args: ''
+#           - platform: windows-latest
+#             args: ''
 
-    runs-on: ${{ matrix.platform }}
+#     runs-on: ${{ matrix.platform }}
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+#       - name: Setup Node.js
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: 20
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+#       - name: Setup Rust
+#         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Linux build dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            curl \
-            wget \
-            file \
-            libxdo-dev \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev
+#       - name: Install Linux build dependencies
+#         if: matrix.platform == 'ubuntu-22.04'
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install -y \
+#             libwebkit2gtk-4.1-dev \
+#             build-essential \
+#             curl \
+#             wget \
+#             file \
+#             libxdo-dev \
+#             libssl-dev \
+#             libayatana-appindicator3-dev \
+#             librsvg2-dev
 
-      - name: Install dependencies
-        run: npm install
+#       - name: Install dependencies
+#         run: npm install
 
-      - name: Build and publish Tauri release
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: apps/desktop
-          tagName: latest
-          releaseName: 'Antimatter Latest Build'
-          releaseBody: |
-            Automated desktop release for Antimatter.
+#       - name: Build and publish Tauri release
+#         uses: tauri-apps/tauri-action@v0
+#         env:
+#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#         with:
+#           projectPath: apps/desktop
+#           tagName: latest
+#           releaseName: 'Antimatter Latest Build'
+#           releaseBody: |
+#             Automated desktop release for Antimatter.
 
-            Built from commit ${{ github.sha }}.
-          releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }}
+#             Built from commit ${{ github.sha }}.
+#           releaseDraft: false
+#           prerelease: false
+#           args: ${{ matrix.args }}
