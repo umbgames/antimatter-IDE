@@ -36,6 +36,7 @@ export function App() {
     providerConfigs,
     selectedProviderId,
     messages,
+    bottomPanelOpen,
     setTheme,
     setAgentDockSide,
     setSettingsOpen,
@@ -48,7 +49,9 @@ export function App() {
     appendMessage,
     appendLogs,
     setApprovalRequests,
-    saveFileLocallyMarked
+    saveFileLocallyMarked,
+    toggleBottomPanel,
+    setWelcomeVisible
   } = useAppStore();
 
   useEffect(() => {
@@ -73,6 +76,7 @@ export function App() {
 
   const selectedProvider = providerConfigs.find((provider) => provider.id === selectedProviderId);
 
+  /* ─── File Actions ─── */
   const saveActiveFile = async () => {
     const file = openFiles.find((entry) => entry.path === activeFilePath);
     if (!file) return;
@@ -80,30 +84,84 @@ export function App() {
     saveFileLocallyMarked(file.path);
   };
 
+  const closeActiveFile = () => {
+    const state = useAppStore.getState();
+    const files = state.openFiles;
+    const activePath = state.activeFilePath;
+    if (!activePath || files.length === 0) return;
+    const idx = files.findIndex((f) => f.path === activePath);
+    const remaining = files.filter((f) => f.path !== activePath);
+    const nextActive = remaining.length > 0
+      ? remaining[Math.min(idx, remaining.length - 1)]?.path
+      : undefined;
+    useAppStore.setState({
+      openFiles: remaining,
+      activeFilePath: nextActive,
+      welcomeVisible: remaining.length === 0
+    });
+  };
+
+  const closeAllFiles = () => {
+    useAppStore.setState({
+      openFiles: [],
+      activeFilePath: undefined,
+      welcomeVisible: true
+    });
+  };
+
+  const newFile = () => {
+    const id = crypto.randomUUID().slice(0, 8);
+    const file = {
+      path: `untitled-${id}`,
+      name: `untitled-${id}`,
+      language: 'plaintext',
+      content: '',
+      dirty: true
+    };
+    useAppStore.getState().openFile(file);
+  };
+
+  const openFolder = () => {
+    // Focus the explorer path input — the FileExplorer handles the actual folder loading
+    const input = document.querySelector('.explorer-pathbar input') as HTMLInputElement | null;
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  };
+
+  /* ─── Keyboard Shortcuts ─── */
   useKeyboardShortcuts({
     'mod+p': () => setCommandPaletteOpen(true),
     'mod+,': () => setSettingsOpen(true),
-    'mod+b': () => useAppStore.getState().toggleBottomPanel(),
-    'mod+s': () => {
-      void saveActiveFile();
-    }
+    'mod+b': () => toggleBottomPanel(),
+    'mod+s': () => { void saveActiveFile(); },
+    'mod+w': () => closeActiveFile(),
+    'mod+n': () => newFile()
   });
 
+  /* ─── Command Palette Items ─── */
   const paletteItems = useMemo(
     () => [
-      { id: 'open-settings', title: 'Open Settings', category: 'General', action: () => setSettingsOpen(true) },
-      { id: 'open-providers', title: 'Open Provider Settings', category: 'AI', action: () => setProvidersOpen(true) },
-      { id: 'toggle-theme', title: 'Toggle Theme', category: 'View', action: () => setTheme(theme === 'dark' ? 'light' : 'dark') },
-      { id: 'move-agent-left', title: 'Dock Agent Panel Left', category: 'Layout', action: () => setAgentDockSide('left') },
-      { id: 'move-agent-right', title: 'Dock Agent Panel Right', category: 'Layout', action: () => setAgentDockSide('right') }
+      { id: 'open-settings', title: 'Preferences: Open Settings', category: 'General', action: () => setSettingsOpen(true) },
+      { id: 'open-providers', title: 'Providers: Configure', category: 'AI', action: () => setProvidersOpen(true) },
+      { id: 'toggle-theme', title: `View: Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Theme`, category: 'View', action: () => setTheme(theme === 'dark' ? 'light' : 'dark') },
+      { id: 'move-agent-left', title: 'Layout: Dock Agent Panel Left', category: 'Layout', action: () => setAgentDockSide('left') },
+      { id: 'move-agent-right', title: 'Layout: Dock Agent Panel Right', category: 'Layout', action: () => setAgentDockSide('right') },
+      { id: 'new-file', title: 'File: New File', category: 'File', action: newFile },
+      { id: 'save-file', title: 'File: Save', category: 'File', action: () => { void saveActiveFile(); } },
+      { id: 'close-file', title: 'File: Close File', category: 'File', action: closeActiveFile },
+      { id: 'toggle-terminal', title: `View: ${bottomPanelOpen ? 'Hide' : 'Show'} Terminal`, category: 'View', action: toggleBottomPanel },
+      { id: 'welcome', title: 'Help: Show Welcome', category: 'Help', action: () => setWelcomeVisible(true) }
     ],
-    [setAgentDockSide, setProvidersOpen, setSettingsOpen, setTheme, theme]
+    [setAgentDockSide, setProvidersOpen, setSettingsOpen, setTheme, theme, bottomPanelOpen, toggleBottomPanel, setWelcomeVisible]
   );
 
   useEffect(() => {
     registerPaletteItems(paletteItems);
   }, [paletteItems, registerPaletteItems]);
 
+  /* ─── Agent ─── */
   const onAgentPrompt = async (prompt: string) => {
     const now = new Date().toISOString();
     const userMessage = {
@@ -120,15 +178,8 @@ export function App() {
         kind: 'plan' as const,
         title: 'Planned next step',
         detail: selectedProvider
-          ? `Routing this turn through ${selectedProvider.label} using model ${selectedProvider.model}.`
-          : 'No provider selected. The agent cannot run until one is configured.',
-        createdAt: now
-      },
-      {
-        id: crypto.randomUUID(),
-        kind: 'info' as const,
-        title: 'Execution model',
-        detail: 'Provider calls run through the Tauri backend so saved credentials stay out of the React UI layer.',
+          ? `Routing through ${selectedProvider.label} · ${selectedProvider.model}`
+          : 'No provider selected — configure one first.',
         createdAt: now
       }
     ];
@@ -137,7 +188,7 @@ export function App() {
 
     let content: string;
     if (!selectedProvider) {
-      content = 'No provider is configured yet. Open Settings → Providers, save a provider with your API key or endpoint, choose a model, and try again.';
+      content = 'No provider configured. Go to Agents → Configure Providers to set one up.';
     } else {
       try {
         content = await chatWithProvider(
@@ -145,12 +196,12 @@ export function App() {
           [...messages, userMessage].map((message) => ({ role: message.role, content: message.content }))
         );
       } catch (error) {
-        content = error instanceof Error ? error.message : 'The provider request failed.';
+        content = error instanceof Error ? error.message : 'Provider request failed.';
         appendLogs([
           {
             id: crypto.randomUUID(),
             kind: 'error',
-            title: 'Provider request failed',
+            title: 'Provider error',
             detail: content,
             createdAt: new Date().toISOString()
           }
@@ -166,6 +217,7 @@ export function App() {
     });
   };
 
+  /* ─── Persist Settings ─── */
   const persistSettings = async () => {
     await saveSettings(deriveSettingsFromStore(useAppStore.getState()));
   };
@@ -174,10 +226,24 @@ export function App() {
     void persistSettings();
   }, [theme, agentDockSide]);
 
+  /* ─── Render ─── */
   return (
     <div className="app-shell">
       <TitleBar title={APP_NAME} />
-      <Toolbar onOpenSettings={() => setSettingsOpen(true)} onOpenProviders={() => setProvidersOpen(true)} />
+      <Toolbar
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenProviders={() => setProvidersOpen(true)}
+        onOpenFolder={openFolder}
+        onSaveFile={() => { void saveActiveFile(); }}
+        onNewFile={newFile}
+        onCloseFile={closeActiveFile}
+        onCloseAllFiles={closeAllFiles}
+        onToggleTerminal={toggleBottomPanel}
+        onRunCommand={() => {
+          if (!bottomPanelOpen) toggleBottomPanel();
+          useAppStore.getState().setBottomPanelTab('terminal');
+        }}
+      />
 
       <div className="workspace-shell">
         <PanelGroup autoSaveId="antimatter-root-layout" direction="horizontal">
@@ -200,10 +266,14 @@ export function App() {
               <Panel>
                 {welcomeVisible && openFiles.length === 0 ? <WelcomeScreen /> : <EditorShell />}
               </Panel>
-              <PanelResizeHandle className="resize-handle horizontal" />
-              <Panel defaultSize={24} minSize={14} collapsible>
-                <BottomPanel />
-              </Panel>
+              {bottomPanelOpen && (
+                <>
+                  <PanelResizeHandle className="resize-handle horizontal" />
+                  <Panel defaultSize={24} minSize={14} collapsible>
+                    <BottomPanel />
+                  </Panel>
+                </>
+              )}
             </PanelGroup>
           </Panel>
 

@@ -7,12 +7,10 @@ export function TitleBar({ title }: Props) {
     <header className="titlebar">
       <div className="titlebar__brand">
         <div className="brand-mark">A</div>
-        <div>
-          <strong>{title}</strong>
-          <span>Local-first agentic IDE</span>
-        </div>
+        <strong>{title}</strong>
+        <span className="titlebar__umb">UMB Games and Technology Ltd</span>
       </div>
-      <div className="titlebar__meta">BYOK · No signup · No cloud lock-in</div>
+      <div className="titlebar__meta">Local-first · BYOK · No cloud lock-in</div>
     </header>
   );
 }
