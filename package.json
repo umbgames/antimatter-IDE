@@ -1,0 +1,23 @@
+{
+  "name": "antimatter",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Antimatter \u2014 local-first, BYOK, agentic IDE built with Tauri, Rust, React, and TypeScript.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w apps/desktop",
+    "build": "npm run build -ws",
+    "lint": "npm run lint -ws",
+    "typecheck": "npm run typecheck -ws",
+    "format": "prettier --write .",
+    "tauri:dev": "npm run tauri:dev -w apps/desktop",
+    "tauri:build": "npm run tauri:build -w apps/desktop"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  }
+}
