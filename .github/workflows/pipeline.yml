@@ -41,7 +41,7 @@ jobs:
             librsvg2-dev
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Typecheck workspace
         run: npm run typecheck --workspaces --if-present
@@ -98,7 +98,7 @@ jobs:
             librsvg2-dev
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build and publish Tauri release
         uses: tauri-apps/tauri-action@v0
