@@ -93,3 +93,13 @@ function inferLanguage(fileName: string): string {
       return 'plaintext';
   }
 }
+
+
+export interface RuntimeChatMessage {
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string;
+}
+
+export async function chatWithProvider(providerId: string, messages: RuntimeChatMessage[]): Promise<string> {
+  return invoke('chat_with_provider', { providerId, messages });
+}

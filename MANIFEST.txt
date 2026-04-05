@@ -1,54 +1,53 @@
-.editorconfig	147 bytes	sha256=49e53afa4ae47ecc7446a8b471792dbbc91575262b3d3b161b063801aa096f5f
-.github/workflows/ci.yml	1119 bytes	sha256=19af17e699c95ecf2e4f1fc9d16b670fd44e73d8a243611f5ca16aaf0317800c
-.github/workflows/release.yml	1682 bytes	sha256=4fa95f3da31c75743d18cbf528cfd49e3cdd28f5b958474a1bcaefdbd26ecd4d
-.gitignore	187 bytes	sha256=bb60fc8f69e0b8f78c71ee0ca372062f86bd59a9eecedf1ba0001f3eea869c9c
-ANTIMATTER_CODEBUNDLE.md	82261 bytes	sha256=81ba1ecef0047064e68b86f5580a9043853ea778c9ee63948e14d3b6535d75ad
-CONTRIBUTING.md	1646 bytes	sha256=3f4f6197f4f1c02263d4446af21bf55a742339e80aa5cbff4522a192086782f8
-LICENSE	1056 bytes	sha256=1126322e2cc8d165adc4c792eeb195717de2bcc7b39be1ce77959d78e87ef685
-README.md	4435 bytes	sha256=c29c2d8470ac3c8899a62aaa9c8e51884bf8fbf210b039a6760bf4db2ba68848
-apps/desktop/index.html	297 bytes	sha256=c60a40ebfd01f3db998e50d83bf44a08f65ee42561cd441f14f69cc4e59726c7
-apps/desktop/package.json	969 bytes	sha256=b44d56183179f641bdb053f6c19ab8131f4bfa688e63f86a757bf7aaf6ff2a25
-apps/desktop/src/App.tsx	6498 bytes	sha256=8561530084b8c88b2a40d8774d28eb9780f187943836d7c4e76968ee18a91cf1
-apps/desktop/src/components/agents/AgentPanel.tsx	3508 bytes	sha256=32ec55609cf56a8bdfcadef6a54536d1315a359b3e7f0fc6966d13e93c626f6e
-apps/desktop/src/components/agents/DiffPreviewCard.tsx	889 bytes	sha256=5603a0bd184a8d61f53f582fbac6969f738df85332e51c4da99931f97a4e590b
-apps/desktop/src/components/editor/EditorShell.tsx	1344 bytes	sha256=571010521695650243ed371488f4ef15732627358ee7439675f1c9e301b2f6ad
-apps/desktop/src/components/explorer/FileExplorer.tsx	1866 bytes	sha256=7ca317f477ed4260d2ea51d96e82586859cf55876e99826d6bf938019e8e52ea
-apps/desktop/src/components/layout/StatusBar.tsx	868 bytes	sha256=4004501ee8fe03857ad9225155cc4659e1e0d9e2841bdc1494d2736e124c7462
-apps/desktop/src/components/layout/TitleBar.tsx	439 bytes	sha256=81a7c67741ec43860bf38e43e68e08ae43bd31ddded9b5e1e195ce3e8f23f70c
-apps/desktop/src/components/layout/Toolbar.tsx	952 bytes	sha256=04c1886e6af79de021ec74d5206543a7cd8ee9fd13cb2965054da2bc38e1bdfe
-apps/desktop/src/components/palette/CommandPalette.tsx	1381 bytes	sha256=20c71d15fd9d109a516e30cdc6db6b561d3a4ebdac36eaebab317f66581bc50a
-apps/desktop/src/components/providers/ProviderSettingsModal.tsx	4802 bytes	sha256=cc55b986aa67613fde9d3ea0b3fad7aae0afd7aec2cce2094be7ae1902ba1335
-apps/desktop/src/components/settings/SettingsDrawer.tsx	1567 bytes	sha256=9eea468657a3984f33cc2daa98da015082552280cb564cafd7bbf98035a4bed0
-apps/desktop/src/components/terminal/BottomPanel.tsx	1764 bytes	sha256=dcd748582e708dff12ee9c40abfe9544f348aa5f28087c612366fc28a0ee6a3c
-apps/desktop/src/components/welcome/WelcomeScreen.tsx	2078 bytes	sha256=803a3816972c38c789f7a9fcd268eaec089b18850713b776e067e8f5676dac0c
-apps/desktop/src/hooks/useKeyboardShortcuts.ts	609 bytes	sha256=11bb66e65789c83769d226220dc309892d97cd2806d8088d33b0e4e3d538d01d
-apps/desktop/src/lib/tauri.ts	2654 bytes	sha256=7aca54d7667de1d653b6729760caee353ad37dd00b3a901d7581be8f1c070893
-apps/desktop/src/main.tsx	262 bytes	sha256=01f63ce6149ef1f6ef55db88fc0fd1bf9c427e610596d1dea6b024c361f87ac0
-apps/desktop/src/store/appStore.ts	5528 bytes	sha256=8f59546dfa0e39a80f96434919d6fcfb7e5df0c5ce5bd8bfe01d2f3d0cb2b499
-apps/desktop/src/styles/global.css	9165 bytes	sha256=ab43d2f284ada8acbb609bf4624e1b8b76b19d0b3722d0194c541d802284606f
-apps/desktop/src-tauri/Cargo.toml	464 bytes	sha256=eb72719595b799c4989245566819da64a3fe4bc3db256435a36456682c2ae881
-apps/desktop/src-tauri/build.rs	37 bytes	sha256=b01bb80b64916f502a3033afdb4567227ef2abcc3b938889f02283aefa780fbe
-apps/desktop/src-tauri/capabilities/default.json	227 bytes	sha256=212d9ee915f7b8c11e4bb5bbd96ffb6e0c8954723c512ffd69907b6c44cd8b27
-apps/desktop/src-tauri/src/commands/mod.rs	55 bytes	sha256=54b4957e23acf17da1f03248cafa50a7e703035665b2e66a128f082057cdba9a
-apps/desktop/src-tauri/src/commands/provider.rs	1263 bytes	sha256=f1cfc9ccaea55d64a1509829ea0ea77abd95e293454a710d116f6f0f14cedadf
-apps/desktop/src-tauri/src/commands/settings.rs	510 bytes	sha256=c45d8c19e8013d0c17c67095e9a691cc0c62669a389826b11334d90d97fa0d47
-apps/desktop/src-tauri/src/commands/workspace.rs	3712 bytes	sha256=80c27c2cae95d5c704b8dadc02589c9fe922065c76fe70d3ada306fd39717b0b
-apps/desktop/src-tauri/src/lib.rs	952 bytes	sha256=7161ed623dd8b5ceff1907407d2fbcc058e2644441da99a6a2c93d50fd7dfc72
-apps/desktop/src-tauri/src/main.rs	49 bytes	sha256=cf3b6ca1b763fd3f84e002abb04e87fdd8c247f26d2e3308b04d87ad129df8d6
-apps/desktop/src-tauri/src/models.rs	1815 bytes	sha256=e4c761dae0974b06c498a7288d08dfeb6659803e3eb73b1c8fe0edd7527c2c3a
-apps/desktop/src-tauri/src/storage.rs	3512 bytes	sha256=1b6b9fe27fbbfe6cf115faf94c7b2e8e010be25f76142dc8c2280fb5771b8c80
-apps/desktop/src-tauri/tauri.conf.json	689 bytes	sha256=66df25a82a08b1a9e915d7be836cb845b15421aa76f339798d74b839dd62aeab
-apps/desktop/tsconfig.json	123 bytes	sha256=55f70ed2825f44f6a9b4000913414ac02375f0fab9dc4bd1e94ce202151b8416
-apps/desktop/vite.config.ts	322 bytes	sha256=bfb7fbf7c4ca733e7d8a65e07e9f5b1196021560b238548ebd4f2a872cd229ee
-package.json	636 bytes	sha256=8f199a8e6154ff30d32b959ac9ef19c7c52adbd16bd765c5855fdd9f6268cae7
-packages/agents/package.json	253 bytes	sha256=ac51c1d20e720a1888f32784ed7b0f82d6c7a6a355481b8aaf67b969c084e649
-packages/agents/src/index.ts	1695 bytes	sha256=e0ae4b49919ee23008cfd012e49132a6c1c703b19749d3123049de4da8b39eb0
-packages/providers/package.json	184 bytes	sha256=8981e027a0a1baa70a3684ba7045e135d518d2943d8b0b5b818f66aaaf535d61
-packages/providers/src/index.ts	2985 bytes	sha256=bc41c05484f2884a65e8ebbf147e21be0a9e6c9d049d60bd94fc0281a3fab6a9
-packages/shared/package.json	122 bytes	sha256=90d80584f88538a1b57cadbcb926c4ad4a93316394edb19a517b507eaed47835
-packages/shared/src/index.ts	2053 bytes	sha256=55a41f169012346c703e4125eece41503d775f2048a785caaab5dd7e3146c027
-packages/tools/package.json	180 bytes	sha256=be62e5fe822502a08f5dea163846d9e583ba1b58693cc12fc3fff725366de6d9
-packages/tools/src/index.ts	1016 bytes	sha256=9a1d23a50023d792f834ba39ad6564d9cfc9d9b3942c12585a24342735aac4a5
-packages/ui/package.json	118 bytes	sha256=3235be861d12fbf4c6a10caa1026c3cbc0a1c034884f87176beb23d0747059c6
-packages/ui/src/index.ts	181 bytes	sha256=2db6b65897d00f46f642936c98810bb7623149d32604a358268e975bb356f366
-tsconfig.base.json	789 bytes	sha256=2c639886ffc90e23844e9523f74e080abb82e01d3614f79a958e2cfd64313ccd
+.editorconfig
+.gitignore
+ANTIMATTER_CODEBUNDLE.md
+CONTRIBUTING.md
+LICENSE
+MANIFEST.txt
+README.md
+apps/desktop/index.html
+apps/desktop/package.json
+apps/desktop/src-tauri/Cargo.toml
+apps/desktop/src-tauri/build.rs
+apps/desktop/src-tauri/capabilities/default.json
+apps/desktop/src-tauri/src/commands/mod.rs
+apps/desktop/src-tauri/src/commands/provider.rs
+apps/desktop/src-tauri/src/commands/settings.rs
+apps/desktop/src-tauri/src/commands/workspace.rs
+apps/desktop/src-tauri/src/lib.rs
+apps/desktop/src-tauri/src/main.rs
+apps/desktop/src-tauri/src/models.rs
+apps/desktop/src-tauri/src/storage.rs
+apps/desktop/src-tauri/tauri.conf.json
+apps/desktop/src/App.tsx
+apps/desktop/src/components/agents/AgentPanel.tsx
+apps/desktop/src/components/agents/DiffPreviewCard.tsx
+apps/desktop/src/components/editor/EditorShell.tsx
+apps/desktop/src/components/explorer/FileExplorer.tsx
+apps/desktop/src/components/layout/StatusBar.tsx
+apps/desktop/src/components/layout/TitleBar.tsx
+apps/desktop/src/components/layout/Toolbar.tsx
+apps/desktop/src/components/palette/CommandPalette.tsx
+apps/desktop/src/components/providers/ProviderSettingsModal.tsx
+apps/desktop/src/components/settings/SettingsDrawer.tsx
+apps/desktop/src/components/terminal/BottomPanel.tsx
+apps/desktop/src/components/welcome/WelcomeScreen.tsx
+apps/desktop/src/hooks/useKeyboardShortcuts.ts
+apps/desktop/src/lib/tauri.ts
+apps/desktop/src/main.tsx
+apps/desktop/src/store/appStore.ts
+apps/desktop/src/styles/global.css
+apps/desktop/tsconfig.json
+apps/desktop/vite.config.ts
+package.json
+packages/agents/package.json
+packages/agents/src/index.ts
+packages/providers/package.json
+packages/providers/src/index.ts
+packages/shared/package.json
+packages/shared/src/index.ts
+packages/tools/package.json
+packages/tools/src/index.ts
+packages/ui/package.json
+packages/ui/src/index.ts
+tsconfig.base.json

@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { APP_NAME } from '@antimatter/shared';
-import { runSingleAgent } from '@antimatter/agents';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { CommandPalette } from './components/palette/CommandPalette';
 import { TitleBar } from './components/layout/TitleBar';
@@ -20,7 +19,8 @@ import {
   loadProviders,
   loadSettings,
   saveSettings,
-  writeWorkspaceFile
+  writeWorkspaceFile,
+  chatWithProvider
 } from './lib/tauri';
 
 export function App() {
@@ -105,17 +105,65 @@ export function App() {
   }, [paletteItems, registerPaletteItems]);
 
   const onAgentPrompt = async (prompt: string) => {
+    const now = new Date().toISOString();
     const userMessage = {
       id: crypto.randomUUID(),
       role: 'user' as const,
       content: prompt,
-      createdAt: new Date().toISOString()
+      createdAt: now
     };
     appendMessage(userMessage);
-    const result = await runSingleAgent({ provider: selectedProvider, messages: [...messages, userMessage] });
-    appendMessage(result.reply);
-    appendLogs(result.logs);
-    setApprovalRequests(result.approvalRequests);
+
+    const plannedLogs = [
+      {
+        id: crypto.randomUUID(),
+        kind: 'plan' as const,
+        title: 'Planned next step',
+        detail: selectedProvider
+          ? `Routing this turn through ${selectedProvider.label} using model ${selectedProvider.model}.`
+          : 'No provider selected. The agent cannot run until one is configured.',
+        createdAt: now
+      },
+      {
+        id: crypto.randomUUID(),
+        kind: 'info' as const,
+        title: 'Execution model',
+        detail: 'Provider calls run through the Tauri backend so saved credentials stay out of the React UI layer.',
+        createdAt: now
+      }
+    ];
+    appendLogs(plannedLogs);
+    setApprovalRequests([]);
+
+    let content: string;
+    if (!selectedProvider) {
+      content = 'No provider is configured yet. Open Settings → Providers, save a provider with your API key or endpoint, choose a model, and try again.';
+    } else {
+      try {
+        content = await chatWithProvider(
+          selectedProvider.id,
+          [...messages, userMessage].map((message) => ({ role: message.role, content: message.content }))
+        );
+      } catch (error) {
+        content = error instanceof Error ? error.message : 'The provider request failed.';
+        appendLogs([
+          {
+            id: crypto.randomUUID(),
+            kind: 'error',
+            title: 'Provider request failed',
+            detail: content,
+            createdAt: new Date().toISOString()
+          }
+        ]);
+      }
+    }
+
+    appendMessage({
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content,
+      createdAt: new Date().toISOString()
+    });
   };
 
   const persistSettings = async () => {

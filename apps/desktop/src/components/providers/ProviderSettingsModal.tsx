@@ -84,6 +84,7 @@ export function ProviderSettingsModal({ open, onClose }: Props) {
                 <option value="openai">OpenAI</option>
                 <option value="anthropic">Anthropic</option>
                 <option value="gemini">Gemini</option>
+                <option value="groq">Groq</option>
                 <option value="local">Local endpoint</option>
                 <option value="openai-compatible">OpenAI-compatible endpoint</option>
               </select>
@@ -102,7 +103,7 @@ export function ProviderSettingsModal({ open, onClose }: Props) {
             <label>
               Base URL
               <input
-                placeholder="Optional for managed providers, required for local/custom endpoints"
+                placeholder={draft.kind === 'groq' ? 'Defaults to https://api.groq.com/openai/v1' : 'Optional for managed providers, required for local/custom endpoints'}
                 value={draft.baseUrl ?? ''}
                 onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })}
               />
@@ -133,6 +134,11 @@ export function ProviderSettingsModal({ open, onClose }: Props) {
             </div>
 
             <div className="helper-text">{feedback}</div>
+            {draft.kind === 'groq' && (
+              <div className="helper-text">
+                Groq provides ultra-fast inference, but model quality, speed, and availability still depend on Groq's infrastructure and the model you select.
+              </div>
+            )}
           </div>
         </div>
       </div>

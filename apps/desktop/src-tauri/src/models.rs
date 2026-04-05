@@ -71,3 +71,10 @@ pub struct TerminalResponse {
     pub exit_code: i32,
     pub message: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatMessage {
+    pub role: String,
+    pub content: String,
+}

@@ -27,7 +27,7 @@ class StubProviderClient implements ProviderClient {
     }
     return {
       ok: true,
-      message: `${this.label} configuration looks structurally valid. Replace this stub with a live API probe for production use.`
+      message: `${this.label} configuration looks structurally valid. Wire the concrete transport in the backend or browser runtime for production use.`
     };
   }
 
@@ -37,27 +37,99 @@ class StubProviderClient implements ProviderClient {
       `Provider: ${this.label}`,
       `Model: ${config.model}`,
       '',
-      'This starter uses a provider abstraction with conservative stub implementations.',
-      'Wire the concrete HTTP client for your chosen provider here.',
+      'This provider is currently scaffolded but not live in the web runtime.',
+      'Use the Tauri backend integration or implement the browser transport here.',
       '',
       `Echo: ${lastMessage}`
     ].join('\n');
   }
 }
 
+class OpenAICompatibleProviderClient implements ProviderClient {
+  constructor(
+    public kind: ProviderKind,
+    public label: string,
+    private readonly fallbackBaseUrl?: string
+  ) {}
+
+  async testConnection(config: ProviderConfig, context?: ProviderContext): Promise<ProviderTestResult> {
+    const baseUrl = this.resolveBaseUrl(config, context);
+    if (!baseUrl) {
+      return { ok: false, message: 'This provider needs a base URL.' };
+    }
+    if (this.kind !== 'local' && !context?.apiKey) {
+      return { ok: false, message: 'Provide an API key in the runtime context to test this provider from the browser layer.' };
+    }
+
+    const response = await fetch(`${baseUrl}/models`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.kind !== 'local' && context?.apiKey ? { Authorization: `Bearer ${context.apiKey}` } : {})
+      }
+    });
+
+    return {
+      ok: response.ok,
+      message: response.ok ? `${this.label} responded successfully.` : `${this.label} returned ${response.status} ${response.statusText}.`
+    };
+  }
+
+  async createChat(request: ChatRequest, config: ProviderConfig, context?: ProviderContext): Promise<string> {
+    const baseUrl = this.resolveBaseUrl(config, context);
+    if (!baseUrl) {
+      throw new Error('This provider needs a base URL before chat can run.');
+    }
+    if (this.kind !== 'local' && !context?.apiKey) {
+      throw new Error('This provider needs an API key in the runtime context for browser-side chat.');
+    }
+
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.kind !== 'local' && context?.apiKey ? { Authorization: `Bearer ${context.apiKey}` } : {})
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: request.messages,
+        temperature: 0.2
+      })
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`${this.label} returned ${response.status}: ${detail || response.statusText}`);
+    }
+
+    const data = await response.json();
+    const content = data?.choices?.[0]?.message?.content;
+    if (typeof content !== 'string') {
+      throw new Error(`${this.label} did not return assistant text in choices[0].message.content.`);
+    }
+    return content;
+  }
+
+  private resolveBaseUrl(config: ProviderConfig, context?: ProviderContext): string {
+    return (context?.baseUrl || config.baseUrl || this.fallbackBaseUrl || '').replace(/\/$/, '');
+  }
+}
+
 export const providerRegistry: Record<ProviderKind, ProviderClient> = {
-  openai: new StubProviderClient('openai', 'OpenAI'),
+  openai: new OpenAICompatibleProviderClient('openai', 'OpenAI', 'https://api.openai.com/v1'),
   anthropic: new StubProviderClient('anthropic', 'Anthropic'),
   gemini: new StubProviderClient('gemini', 'Gemini'),
-  local: new StubProviderClient('local', 'Local Endpoint'),
-  'openai-compatible': new StubProviderClient('openai-compatible', 'OpenAI-Compatible Endpoint')
+  groq: new OpenAICompatibleProviderClient('groq', 'Groq', 'https://api.groq.com/openai/v1'),
+  local: new OpenAICompatibleProviderClient('local', 'Local Endpoint'),
+  'openai-compatible': new OpenAICompatibleProviderClient('openai-compatible', 'OpenAI-Compatible Endpoint')
 };
 
-export const providerDefaults: Array<Pick<ProviderConfig, 'label' | 'kind' | 'model' | 'notes'>> = [
+export const providerDefaults: Array<Pick<ProviderConfig, 'label' | 'kind' | 'model' | 'notes' | 'baseUrl'>> = [
   {
     label: 'OpenAI',
     kind: 'openai',
     model: 'gpt-4.1-mini',
+    baseUrl: 'https://api.openai.com/v1',
     notes: 'Use your own OpenAI API key. Latency and pricing depend on your OpenAI account and model choice.'
   },
   {
@@ -71,6 +143,13 @@ export const providerDefaults: Array<Pick<ProviderConfig, 'label' | 'kind' | 'mo
     kind: 'gemini',
     model: 'gemini-2.5-pro',
     notes: 'Connect your own Gemini API credentials.'
+  },
+  {
+    label: 'Groq',
+    kind: 'groq',
+    model: 'llama-3.3-70b-versatile',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    notes: 'Bring your own Groq API key. Groq offers ultra-fast inference, but latency, throughput, and model availability depend on Groq and your selected model.'
   },
   {
     label: 'Local Endpoint',

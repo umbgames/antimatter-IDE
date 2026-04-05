@@ -15,7 +15,7 @@ This repository ships a production-grade starter for a desktop-first IDE built w
 - **Local-first**: your workspace stays on your machine
 - **No signup**: no mandatory account flow
 - **BYOK**: bring your own provider credentials
-- **No cloud lock-in**: supports hosted APIs, local model endpoints, and OpenAI-compatible endpoints
+- **No cloud lock-in**: supports hosted APIs, Groq, local model endpoints, and OpenAI-compatible endpoints
 - **Safe-by-default agent UX**: previews, logs, and approvals before risky actions
 - **Open-source-friendly**: modular packages, low ceremony, clear boundaries
 
@@ -26,6 +26,7 @@ Antimatter ships provider abstractions for:
 - OpenAI
 - Anthropic
 - Gemini
+- Groq
 - Local model endpoints
 - Custom OpenAI-compatible endpoints
 
@@ -110,34 +111,3 @@ Those are left in a contributor-friendly state so they can be extended without r
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md).
-
-## GitHub Actions release automation
-
-This repository includes two workflows:
-
-- `.github/workflows/ci.yml` validates the workspace on pushes to `main` and on pull requests.
-- `.github/workflows/release.yml` builds native desktop bundles for macOS, Linux, and Windows whenever you push a Git tag matching `v*` (for example `v0.1.0`).
-
-After the tagged build finishes, GitHub Actions publishes the generated desktop artifacts directly to the **Releases** tab for that tag.
-
-### Trigger a release
-
-```bash
-npm version patch --no-git-tag-version
-
-git add .
-git commit -m "release: v0.1.0"
-git tag v0.1.0
-git push origin main --tags
-```
-
-You can also run the release workflow manually from the **Actions** tab with **workflow_dispatch**.
-
-### Optional signing
-
-The included workflow publishes unsigned binaries by default. For production distribution, add platform signing secrets later:
-
-- macOS: Apple signing certificate + notarization credentials
-- Windows: code-signing certificate
-
-Linux artifacts usually do not require signing for internal or OSS distribution.

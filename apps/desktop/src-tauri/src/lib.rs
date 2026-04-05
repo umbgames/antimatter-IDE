@@ -14,6 +14,7 @@ pub fn run() {
             commands::provider::load_providers,
             commands::provider::save_provider,
             commands::provider::test_provider_connection,
+            commands::provider::chat_with_provider,
             commands::workspace::read_directory,
             commands::workspace::read_workspace_file,
             commands::workspace::write_workspace_file,
