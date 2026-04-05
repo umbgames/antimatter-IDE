@@ -1,4 +1,4 @@
-import type { AgentActionLog, AgentMessage, ApprovalRequest, ProviderConfig, WorkspaceEntry } from '@antimatter/shared';
+import type { AgentActionLog, AgentMessage, ApprovalRequest, ProviderConfig } from '@antimatter/shared';
 import { providerRegistry } from '@antimatter/providers';
 import { builtInTools } from '@antimatter/tools';
 
