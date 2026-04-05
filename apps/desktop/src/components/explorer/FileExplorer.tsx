@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { WorkspaceEntry } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { openFileAsTab, readDirectory } from '@/lib/tauri';

@@ -1,4 +1,3 @@
-import React from 'react';
 import type { RecentProject } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { openFolderPicker, readDirectory, saveRecentProject } from '@/lib/tauri';
