@@ -1,7 +1,16 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@antimatter/shared": ["../../packages/shared/src"],
+      "@antimatter/providers": ["../../packages/providers/src"],
+      "@antimatter/agents": ["../../packages/agents/src"],
+      "@antimatter/tools": ["../../packages/tools/src"],
+      "@antimatter/ui": ["../../packages/ui/src"]
+    }
   },
   "include": ["src"]
 }

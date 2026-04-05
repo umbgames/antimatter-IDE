@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { builtInTools } from '@antimatter/tools';
+import type { AgentActionLog, AgentMessage, ApprovalRequest, ProviderConfig } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { DiffPreviewCard } from './DiffPreviewCard';
 
@@ -11,7 +12,7 @@ export function AgentPanel({ onSubmit }: Props) {
   const { messages, actionLogs, approvalRequests, providerConfigs, selectedProviderId, setSelectedProviderId } = useAppStore();
   const [prompt, setPrompt] = useState('Summarize the current file and suggest the next refactor.');
   const selectedProvider = useMemo(
-    () => providerConfigs.find((provider) => provider.id === selectedProviderId),
+    () => providerConfigs.find((provider: ProviderConfig) => provider.id === selectedProviderId),
     [providerConfigs, selectedProviderId]
   );
 
@@ -24,7 +25,7 @@ export function AgentPanel({ onSubmit }: Props) {
         </div>
         <select value={selectedProviderId ?? ''} onChange={(event) => setSelectedProviderId(event.target.value || undefined)}>
           <option value="">No provider selected</option>
-          {providerConfigs.map((provider) => (
+          {providerConfigs.map((provider: ProviderConfig) => (
             <option key={provider.id} value={provider.id}>
               {provider.label} · {provider.model}
             </option>
@@ -39,7 +40,7 @@ export function AgentPanel({ onSubmit }: Props) {
       <div className="agent-section">
         <strong>Conversation</strong>
         <div className="message-list">
-          {messages.map((message) => (
+          {messages.map((message: AgentMessage) => (
             <article key={message.id} className={`message message--${message.role}`}>
               <header>{message.role}</header>
               <p>{message.content}</p>
@@ -65,7 +66,7 @@ export function AgentPanel({ onSubmit }: Props) {
           {actionLogs.length === 0 ? (
             <div className="empty-state compact">No actions yet.</div>
           ) : (
-            actionLogs.map((log) => (
+            actionLogs.map((log: AgentActionLog) => (
               <article key={log.id} className="log-entry">
                 <header>{log.title}</header>
                 <p>{log.detail}</p>
@@ -78,7 +79,7 @@ export function AgentPanel({ onSubmit }: Props) {
       {approvalRequests.length > 0 && (
         <div className="agent-section">
           <strong>Approvals</strong>
-          {approvalRequests.map((request) => (
+          {approvalRequests.map((request: ApprovalRequest) => (
             <DiffPreviewCard key={request.id} request={request} />
           ))}
         </div>

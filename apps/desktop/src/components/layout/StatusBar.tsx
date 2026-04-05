@@ -1,3 +1,4 @@
+import type { ProviderConfig } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 
 interface Props {
@@ -6,7 +7,7 @@ interface Props {
 
 export function StatusBar({ onToggleProviders }: Props) {
   const { theme, workspacePath, openFiles, providerConfigs, selectedProviderId } = useAppStore();
-  const provider = providerConfigs.find((entry) => entry.id === selectedProviderId);
+  const provider = providerConfigs.find((entry: ProviderConfig) => entry.id === selectedProviderId);
 
   return (
     <footer className="statusbar">

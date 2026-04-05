@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { WorkspaceEntry } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { openFileAsTab, readDirectory } from '@/lib/tauri';
 
@@ -41,7 +42,7 @@ export function FileExplorer() {
         {workspaceEntries.length === 0 ? (
           <div className="empty-state compact">No files loaded yet.</div>
         ) : (
-          workspaceEntries.map((entry) => (
+          workspaceEntries.map((entry: WorkspaceEntry) => (
             <button
               key={entry.path}
               className="tree-item"

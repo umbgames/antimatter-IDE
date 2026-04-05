@@ -1,4 +1,4 @@
-import { APP_NAME, APP_TAGLINE } from '@antimatter/shared';
+import { APP_NAME, APP_TAGLINE, type RecentProject } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 
 export function WelcomeScreen() {
@@ -45,7 +45,7 @@ export function WelcomeScreen() {
           <p>No recent projects yet.</p>
         ) : (
           <div className="recent-list">
-            {recentProjects.map((project) => (
+            {recentProjects.map((project: RecentProject) => (
               <div key={project.path} className="recent-item">
                 <strong>{project.name}</strong>
                 <span>{project.path}</span>

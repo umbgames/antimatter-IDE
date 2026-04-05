@@ -1,9 +1,10 @@
 import Editor from '@monaco-editor/react';
+import type { OpenFile } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 
 export function EditorShell() {
   const { openFiles, activeFilePath, theme, openFile, updateOpenFileContent } = useAppStore();
-  const activeFile = openFiles.find((file) => file.path === activeFilePath) ?? openFiles[0];
+  const activeFile = openFiles.find((file: OpenFile) => file.path === activeFilePath) ?? openFiles[0];
 
   if (!activeFile) {
     return <div className="panel editor-panel empty-state">Open a file to start editing.</div>;
@@ -12,7 +13,7 @@ export function EditorShell() {
   return (
     <section className="panel editor-panel">
       <div className="tabs">
-        {openFiles.map((file) => (
+        {openFiles.map((file: OpenFile) => (
           <button key={file.path} className={`tab ${file.path === activeFile.path ? 'active' : ''}`} onClick={() => openFile(file)}>
             {file.name}
             {file.dirty ? ' •' : ''}

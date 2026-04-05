@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useAppStore } from '@/store/appStore';
+import { useAppStore, type PaletteItem } from '@/store/appStore';
 
 interface Props {
   open: boolean;
@@ -13,7 +13,7 @@ export function CommandPalette({ open, onClose }: Props) {
   const filtered = useMemo(() => {
     const value = query.trim().toLowerCase();
     return value
-      ? paletteItems.filter((item) => `${item.title} ${item.category}`.toLowerCase().includes(value))
+      ? paletteItems.filter((item: PaletteItem) => `${item.title} ${item.category}`.toLowerCase().includes(value))
       : paletteItems;
   }, [paletteItems, query]);
 
@@ -30,7 +30,7 @@ export function CommandPalette({ open, onClose }: Props) {
           onChange={(event) => setQuery(event.target.value)}
         />
         <div className="palette-results">
-          {filtered.map((item) => (
+          {filtered.map((item: PaletteItem) => (
             <button
               key={item.id}
               className="palette-item"

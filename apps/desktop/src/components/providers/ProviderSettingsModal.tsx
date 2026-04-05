@@ -68,7 +68,7 @@ export function ProviderSettingsModal({ open, onClose }: Props) {
 
         <div className="provider-layout">
           <div className="provider-list">
-            {providerConfigs.map((provider) => (
+            {providerConfigs.map((provider: ProviderConfig) => (
               <button key={provider.id} className="provider-card" onClick={() => setDraft(provider)}>
                 <strong>{provider.label}</strong>
                 <span>{provider.kind}</span>

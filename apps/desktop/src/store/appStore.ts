@@ -14,7 +14,7 @@ import type {
 } from '@antimatter/shared';
 import { providerDefaults } from '@antimatter/providers';
 
-interface PaletteItem {
+export interface PaletteItem {
   id: string;
   title: string;
   category: string;
