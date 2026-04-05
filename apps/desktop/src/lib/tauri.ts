@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import type {
   AppSettings,
   OpenFile,
@@ -57,6 +58,16 @@ export async function testProviderConnection(config: ProviderConfig): Promise<Pr
 
 export async function executeTerminal(request: TerminalRequest): Promise<TerminalResponse> {
   return invoke('execute_terminal_command', { request });
+}
+
+export async function openFolderPicker(): Promise<string | null> {
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    title: 'Select Workspace Folder'
+  });
+  if (Array.isArray(selected)) return selected[0];
+  return selected;
 }
 
 export async function openFileAsTab(path: string): Promise<OpenFile> {

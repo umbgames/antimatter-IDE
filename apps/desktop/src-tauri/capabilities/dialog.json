@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "dialog",
+  "description": "Folder selection capability for the Antimatter desktop app.",
+  "windows": ["main"],
+  "permissions": ["dialog:default", "dialog:allow-open"]
+}

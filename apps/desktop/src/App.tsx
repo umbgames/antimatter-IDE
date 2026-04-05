@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { clsx } from 'clsx';
 import { APP_NAME } from '@antimatter/shared';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { CommandPalette } from './components/palette/CommandPalette';
@@ -13,14 +14,16 @@ import { StatusBar } from './components/layout/StatusBar';
 import { SettingsDrawer } from './components/settings/SettingsDrawer';
 import { ProviderSettingsModal } from './components/providers/ProviderSettingsModal';
 import { WelcomeScreen } from './components/welcome/WelcomeScreen';
+import { StartupMenu } from './components/layout/StartupMenu';
+import { SearchPanel } from './components/explorer/SearchPanel';
+import { runAgentLoop } from '@antimatter/agents';
 import { useAppStore, deriveSettingsFromStore } from './store/appStore';
 import {
   getRecentProjects,
   loadProviders,
   loadSettings,
   saveSettings,
-  writeWorkspaceFile,
-  chatWithProvider
+  writeWorkspaceFile
 } from './lib/tauri';
 
 export function App() {
@@ -33,6 +36,7 @@ export function App() {
     welcomeVisible,
     openFiles,
     activeFilePath,
+    workspacePath,
     providerConfigs,
     selectedProviderId,
     messages,
@@ -53,6 +57,8 @@ export function App() {
     toggleBottomPanel,
     setWelcomeVisible
   } = useAppStore();
+
+  const [sidebarTab, setSidebarTab] = React.useState<'explorer' | 'search'>('explorer');
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -186,35 +192,33 @@ export function App() {
     appendLogs(plannedLogs);
     setApprovalRequests([]);
 
-    let content: string;
-    if (!selectedProvider) {
-      content = 'No provider configured. Go to Agents → Configure Providers to set one up.';
-    } else {
-      try {
-        content = await chatWithProvider(
-          selectedProvider.id,
-          [...messages, userMessage].map((message) => ({ role: message.role, content: message.content }))
-        );
-      } catch (error) {
-        content = error instanceof Error ? error.message : 'Provider request failed.';
-        appendLogs([
-          {
-            id: crypto.randomUUID(),
-            kind: 'error',
-            title: 'Provider error',
-            detail: content,
-            createdAt: new Date().toISOString()
-          }
-        ]);
-      }
-    }
+    const context = {
+      provider: selectedProvider,
+      messages: [...messages, userMessage],
+      workspacePath: workspacePath || undefined
+    };
 
-    appendMessage({
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content,
-      createdAt: new Date().toISOString()
+    const result = await runAgentLoop(context, async (toolId, args) => {
+      // Dynamic imports to keep App.tsx clean and avoid circularity
+      const tauri = await import('./lib/tauri');
+      
+      switch (toolId) {
+        case 'read-file':
+          return await tauri.readWorkspaceFile(args.path);
+        case 'search-workspace':
+          if (!workspacePath) throw new Error('No workspace open');
+          return await tauri.searchWorkspace(workspacePath, args.query);
+        case 'terminal-exec':
+          if (!workspacePath) throw new Error('No workspace open');
+          return await tauri.executeTerminal({ cwd: workspacePath, command: args.command });
+        default:
+          throw new Error(`Tool ${toolId} not implemented in runtime.`);
+      }
     });
+
+    appendLogs(result.logs);
+    setApprovalRequests(result.approvalRequests);
+    appendMessage(result.reply);
   };
 
   /* ─── Persist Settings ─── */
@@ -257,7 +261,21 @@ export function App() {
           )}
 
           <Panel defaultSize={18} minSize={12}>
-            <FileExplorer />
+            <div className="sidebar-tabs">
+              <button 
+                className={clsx('sidebar-tab', { active: sidebarTab === 'explorer' })}
+                onClick={() => setSidebarTab('explorer')}
+              >
+                Explorer
+              </button>
+              <button 
+                className={clsx('sidebar-tab', { active: sidebarTab === 'search' })}
+                onClick={() => setSidebarTab('search')}
+              >
+                Search
+              </button>
+            </div>
+            {sidebarTab === 'explorer' ? <FileExplorer /> : <SearchPanel />}
           </Panel>
           <PanelResizeHandle className="resize-handle vertical" />
 
@@ -292,6 +310,7 @@ export function App() {
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ProviderSettingsModal open={providersOpen} onClose={() => setProvidersOpen(false)} />
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+      {!workspacePath && <StartupMenu />}
     </div>
   );
 }
