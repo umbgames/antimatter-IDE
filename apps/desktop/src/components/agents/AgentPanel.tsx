@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import type { AgentActionLog, AgentMessage, ApprovalRequest, ProviderConfig } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { DiffPreviewCard } from './DiffPreviewCard';
