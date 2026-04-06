@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { MenuDropdown, type MenuItem } from './MenuDropdown';
 import { useAppStore } from '@/store/appStore';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 interface Props {
   onOpenSettings: () => void;
@@ -231,7 +232,6 @@ export function Toolbar({
         <button 
           className="window-control minimize" 
           onClick={async () => {
-            const { getCurrentWindow } = await import('@tauri-apps/api/window');
             await getCurrentWindow().minimize();
           }}
         >
@@ -242,7 +242,6 @@ export function Toolbar({
         <button 
           className="window-control maximize" 
           onClick={async () => {
-             const { getCurrentWindow } = await import('@tauri-apps/api/window');
              await getCurrentWindow().toggleMaximize();
           }}
         >
@@ -253,7 +252,6 @@ export function Toolbar({
         <button 
           className="window-control close" 
           onClick={async () => {
-             const { getCurrentWindow } = await import('@tauri-apps/api/window');
              await getCurrentWindow().close();
           }}
         >

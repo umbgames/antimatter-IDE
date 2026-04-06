@@ -6,7 +6,12 @@ interface Props {
 }
 
 export function SettingsDrawer({ open, onClose }: Props) {
-  const { theme, setTheme, agentDockSide, setAgentDockSide, bottomPanelOpen, toggleBottomPanel } = useAppStore();
+  const { 
+    theme, setTheme, 
+    agentDockSide, setAgentDockSide, 
+    bottomPanelOpen, toggleBottomPanel,
+    providerConfigs, selectedProviderId, setSelectedProviderId 
+  } = useAppStore();
 
   if (!open) return null;
 
@@ -43,6 +48,22 @@ export function SettingsDrawer({ open, onClose }: Props) {
               <select className="settings-select" value={agentDockSide} onChange={(event) => setAgentDockSide(event.target.value as 'left' | 'right')}>
                 <option value="left">Left</option>
                 <option value="right">Right</option>
+              </select>
+            </label>
+          </div>
+
+          <h4 className="settings-group-title">AI Assistant</h4>
+          <div className="settings-group">
+            <label className="settings-block">
+              <span className="settings-label-title">Default Provider</span>
+              <span className="settings-label-desc">Select which AI provider powers the agent</span>
+              <select className="settings-select" value={selectedProviderId || ''} onChange={(event) => setSelectedProviderId(event.target.value)}>
+                <option value="" disabled>Select a provider...</option>
+                {providerConfigs.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.label} ({provider.model})
+                  </option>
+                ))}
               </select>
             </label>
             <label className="checkbox-row" style={{ marginTop: '12px' }}>
