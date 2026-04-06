@@ -23,7 +23,7 @@ export const builtInTools: ToolDescriptor[] = [
   {
     id: 'patch-file',
     label: 'Patch File',
-    description: 'Apply a targeted patch to a file after diff preview and approval.',
+    description: 'Apply a targeted patch to a file using {"path": "...", "replacements": [{"search": "exact string", "replace": "new string"}]}.',
     risk: 'approval-required'
   },
   {

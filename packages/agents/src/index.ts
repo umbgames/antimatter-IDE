@@ -47,11 +47,11 @@ ${builtInTools.map(t => `- ${t.id}: ${t.description} (Risk: ${t.risk})`).join('\
 TOOL CALL FORMAT:
 To use a tool, wrap the call in XML-like tags. For example:
 <tool_call id="read-file">{"path": "src/main.rs"}</tool_call>
-<tool_call id="search-workspace">{"query": "todo"}</tool_call>
+<tool_call id="patch-file">{"path": "src/main.ts", "replacements": [{"search": "old exact text", "replace": "new text"}]}</tool_call>
 
 RULES:
 1. Only call ONE tool at a time.
-2. After a tool call, wait for the observation before continuing.
+2. After a read-only tool call, you will automatically receive an <observation> and generation will loop back to you.
 3. If you need to write or patch a file, explain WHY first.
 4. Professional, technical, and concise tone.
 5. "read-only" tools execute automatically. "approval-required" or "guarded" tools will stop for user permission.
@@ -76,7 +76,6 @@ export async function runAgentLoop(
     };
   }
 
-  // Initial step: Log the start
   logs.push({
     id: crypto.randomUUID(),
     kind: 'plan',
@@ -85,121 +84,138 @@ export async function runAgentLoop(
     createdAt: now
   });
 
-  try {
-    const personaPrompt = context.persona === 'architect' ? ARCHITECT_PROMPT : 
-                          context.persona === 'qa' ? QA_PROMPT : ENGINEER_PROMPT;
-    
-    const chatMessages = [
-      { role: 'system', content: BASE_SYSTEM_PROMPT + "\n" + personaPrompt },
-      ...currentMessages.map(m => ({ role: m.role as any, content: m.content }))
-    ];
+  const personaPrompt = context.persona === 'architect' ? ARCHITECT_PROMPT : 
+                        context.persona === 'qa' ? QA_PROMPT : ENGINEER_PROMPT;
 
-    let response: string;
-    if (context.createChat) {
-      response = await context.createChat(
-        { model: provider.model, messages: chatMessages },
-        provider
-      );
-    } else {
-      response = await providerRegistry[provider.kind].createChat(
-        { model: provider.model, messages: chatMessages },
-        provider
-      );
-    }
+  let loopCount = 0;
+  const MAX_LOOPS = 8;
 
-    // 1. Parse for tool calls
-    const toolCallMatch = response.match(/<tool_call id="([^"]+)">([\s\S]*?)<\/tool_call>/);
-    
-    if (toolCallMatch) {
-      const toolId = toolCallMatch[1];
-      const toolArgsRaw = toolCallMatch[2];
-      let toolArgs = {};
-      try { toolArgs = JSON.parse(toolArgsRaw); } catch (e) { /* ignore parse error */ }
+  while (loopCount < MAX_LOOPS) {
+    loopCount++;
+    try {
+      const chatMessages = [
+        { role: 'system', content: BASE_SYSTEM_PROMPT + "\n" + personaPrompt },
+        ...currentMessages.map(m => ({ role: m.role as any, content: m.content }))
+      ];
 
-      const tool = builtInTools.find(t => t.id === toolId);
+      let response: string;
+      if (context.createChat) {
+        response = await context.createChat({ model: provider.model, messages: chatMessages }, provider);
+      } else {
+        response = await providerRegistry[provider.kind].createChat({ model: provider.model, messages: chatMessages }, provider);
+      }
+
+      currentMessages.push({ id: crypto.randomUUID(), role: 'assistant', content: response, createdAt: new Date().toISOString() });
+
+      const toolCallMatch = response.match(/<tool_call id="([^"]+)">([\s\S]*?)<\/tool_call>/);
       
-      if (tool) {
-        // Log the intent
-        logs.push({
-          id: crypto.randomUUID(),
-          kind: 'tool',
-          title: `Using ${tool.label}`,
-          detail: `Args: ${JSON.stringify(toolArgs)}`,
-          createdAt: new Date().toISOString()
-        });
+      if (toolCallMatch) {
+        const toolId = toolCallMatch[1];
+        const toolArgsRaw = toolCallMatch[2];
+        let toolArgs: any = {};
+        try { toolArgs = JSON.parse(toolArgsRaw); } catch (e) { /* ignore parse error */ }
 
-        // Handle approvals
-        if (tool.risk === 'approval-required' || tool.risk === 'guarded') {
-          let diffPayload = undefined;
-          
-          if (toolId === 'write-file' || toolId === 'patch-file') {
-             try {
-               const args = toolArgs as any;
-               const original = await executeTool('read-file', { path: args.path });
-               diffPayload = {
-                 filePath: args.path,
-                 original: typeof original === 'string' ? original : '',
-                 proposed: args.content || ''
-               };
-             } catch (e) {
-               const args = toolArgs as any;
-               // Fallback if file doesn't exist yet
-               diffPayload = {
-                 filePath: args.path,
-                 original: '',
-                 proposed: args.content || ''
-               };
-             }
-          }
-
-          return {
-            reply: { id: crypto.randomUUID(), role: 'assistant', content: response, createdAt: now },
-            logs,
-            approvalRequests: [{
-              id: crypto.randomUUID(),
-              title: `Approve ${tool.label}`,
-              description: `Agent wants to ${tool.description.toLowerCase()}`,
-              risk: tool.risk === 'guarded' ? 'high' : 'medium',
-              diff: diffPayload
-            }]
-          };
-        }
-
-        // Execute read-only tools automatically (Single step for now, recursion can vary)
-        try {
-          const observation = await executeTool(toolId, toolArgs);
-          const fullReply = `${response}\n\n<observation>\n${JSON.stringify(observation, null, 2)}\n</observation>`;
-          
-          return {
-            reply: { id: crypto.randomUUID(), role: 'assistant', content: fullReply, createdAt: now },
-            logs,
-            approvalRequests: []
-          };
-        } catch (err: any) {
+        const tool = builtInTools.find(t => t.id === toolId);
+        
+        if (tool) {
           logs.push({
             id: crypto.randomUUID(),
-            kind: 'error',
-            title: 'Tool execution failed',
-            detail: err.message || String(err),
+            kind: 'tool',
+            title: `Using ${tool.label}`,
+            detail: `Args: ${JSON.stringify(toolArgs)}`,
             createdAt: new Date().toISOString()
           });
+
+          if (tool.risk === 'approval-required' || tool.risk === 'guarded') {
+            let diffPayload = undefined;
+            
+            if (toolId === 'write-file' || toolId === 'patch-file') {
+               try {
+                 const original = await executeTool('read-file', { path: toolArgs.path });
+                 let proposed = toolArgs.content || '';
+                 const origText = typeof original === 'string' ? original : '';
+                 
+                 if (toolId === 'patch-file' && Array.isArray(toolArgs.replacements)) {
+                    proposed = origText;
+                    for (const r of toolArgs.replacements) {
+                      if (r.search && typeof r.replace === 'string') {
+                         proposed = proposed.replace(r.search, r.replace);
+                      }
+                    }
+                 }
+
+                 diffPayload = {
+                   filePath: toolArgs.path,
+                   original: origText,
+                   proposed
+                 };
+               } catch (e) {
+                 diffPayload = {
+                   filePath: toolArgs.path,
+                   original: '',
+                   proposed: toolArgs.content || ''
+                 };
+               }
+            }
+
+            return {
+              reply: currentMessages[currentMessages.length - 1],
+              logs,
+              approvalRequests: [{
+                id: crypto.randomUUID(),
+                title: `Approve ${tool.label}`,
+                description: `Agent wants to ${tool.description.toLowerCase()}`,
+                risk: tool.risk === 'guarded' ? 'high' : 'medium',
+                diff: diffPayload
+              }]
+            };
+          }
+
+          // Execute read-only tools automatically internally and loop back
+          try {
+            const observation = await executeTool(toolId, toolArgs);
+            currentMessages.push({
+               id: crypto.randomUUID(),
+               role: 'user', // We feed observation back as user to bypass typical LLM system limits
+               content: `<observation>\n${JSON.stringify(observation, null, 2)}\n</observation>`,
+               createdAt: new Date().toISOString()
+            });
+            continue;
+          } catch (err: any) {
+            logs.push({
+              id: crypto.randomUUID(),
+              kind: 'error',
+              title: 'Tool execution failed',
+              detail: err.message || String(err),
+              createdAt: new Date().toISOString()
+            });
+            currentMessages.push({
+               id: crypto.randomUUID(),
+               role: 'user',
+               content: `<error>\nTool failed: ${err.message || String(err)}\n</error>`,
+               createdAt: new Date().toISOString()
+            });
+            continue;
+          }
         }
       }
+
+      break;
+
+    } catch (err: any) {
+      return {
+        reply: { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${err.message}`, createdAt: new Date().toISOString() },
+        logs: [...logs, { id: crypto.randomUUID(), kind: 'error', title: 'Provider error', detail: err.message, createdAt: new Date().toISOString() }],
+        approvalRequests: []
+      };
     }
-
-    return {
-      reply: { id: crypto.randomUUID(), role: 'assistant', content: response, createdAt: now },
-      logs,
-      approvalRequests: []
-    };
-
-  } catch (err: any) {
-    return {
-      reply: { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${err.message}`, createdAt: now },
-      logs: [...logs, { id: crypto.randomUUID(), kind: 'error', title: 'Provider error', detail: err.message, createdAt: now }],
-      approvalRequests: []
-    };
   }
+
+  return {
+    reply: currentMessages[currentMessages.length - 1] ?? { id: crypto.randomUUID(), role: 'assistant', content: 'Agent stopped unexpectedly.', createdAt: now },
+    logs,
+    approvalRequests: []
+  };
 }
 
 // Keep the old export for backward compatibility if needed
