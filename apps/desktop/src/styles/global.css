@@ -62,6 +62,27 @@
 /* ─── Reset ─── */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body, #root { width: 100%; height: 100%; }
+
+/* ─── Minimalist Scrollbars ─── */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+  border: 4px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
 body {
   font-family: var(--font-sans);
   font-size: 13px;
@@ -82,65 +103,54 @@ button { cursor: pointer; border: none; background: none; }
   overflow: hidden;
 }
 
-/* ─── TitleBar ─── */
-.titlebar {
+/* ─── Toolbar / Titlebar Unified ─── */
+.toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 36px;
-  padding: 0 12px;
+  height: 38px;
+  padding: 0;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
   user-select: none;
-  -webkit-app-region: drag;
 }
-.titlebar__brand {
+.toolbar__brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  -webkit-app-region: no-drag;
+  padding: 0 12px;
 }
 .brand-mark {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: var(--radius-sm);
   display: grid;
   place-items: center;
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
   color: white;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
-.titlebar__brand strong {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-.titlebar__umb {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-muted);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  margin-left: 8px;
-  padding-left: 8px;
-  border-left: 1px solid var(--border);
-}
-.titlebar__meta {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-/* ─── Toolbar ─── */
-.toolbar {
+.toolbar__window-controls {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 32px;
-  padding: 0 4px;
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border);
+  height: 100%;
+}
+.window-control {
+  width: 46px;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: background 100ms;
+}
+.window-control:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.window-control.close:hover {
+  background: #e81123;
+  color: white;
 }
 .toolbar__menus {
   display: flex;

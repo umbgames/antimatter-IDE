@@ -16,34 +16,40 @@ export function SettingsDrawer({ open, onClose }: Props) {
         <div className="panel__header">
           <div>
             <h3>Settings</h3>
-            <p>Local-only defaults. Telemetry stays off by default.</p>
           </div>
-          <button className="button subtle" onClick={onClose}>
-            Close
+          <button className="button-icon subtle" onClick={onClose}>
+            ✕
           </button>
         </div>
 
-        <section className="form-section">
-          <label>
-            Theme
-            <select value={theme} onChange={(event) => setTheme(event.target.value as 'dark' | 'light')}>
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-            </select>
-          </label>
+        <section className="settings-section">
+          <h4 className="settings-group-title">Appearance</h4>
+          <div className="settings-group">
+            <label className="settings-block">
+              <span className="settings-label-title">Color Theme</span>
+              <span className="settings-label-desc">Select the application theme</span>
+              <select className="settings-select" value={theme} onChange={(event) => setTheme(event.target.value as 'dark' | 'light')}>
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+            </label>
+          </div>
 
-          <label>
-            Agent panel dock
-            <select value={agentDockSide} onChange={(event) => setAgentDockSide(event.target.value as 'left' | 'right')}>
-              <option value="left">Left</option>
-              <option value="right">Right</option>
-            </select>
-          </label>
-
-          <label className="checkbox-row">
-            <input type="checkbox" checked={bottomPanelOpen} onChange={toggleBottomPanel} />
-            <span>Show bottom panel</span>
-          </label>
+          <h4 className="settings-group-title">Layout</h4>
+          <div className="settings-group">
+            <label className="settings-block">
+              <span className="settings-label-title">Agent Panel Location</span>
+              <span className="settings-label-desc">Where the AI assistant is docked</span>
+              <select className="settings-select" value={agentDockSide} onChange={(event) => setAgentDockSide(event.target.value as 'left' | 'right')}>
+                <option value="left">Left</option>
+                <option value="right">Right</option>
+              </select>
+            </label>
+            <label className="checkbox-row" style={{ marginTop: '12px' }}>
+              <input type="checkbox" checked={bottomPanelOpen} onChange={toggleBottomPanel} />
+              <span>Show bottom terminal panel by default</span>
+            </label>
+          </div>
         </section>
       </div>
     </div>

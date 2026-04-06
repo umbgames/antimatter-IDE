@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { builtInTools } from '@antimatter/tools';
 import type { AgentActionLog, AgentMessage, ApprovalRequest, ProviderConfig } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { DiffPreviewCard } from './DiffPreviewCard';
+import { Send, Bot, User, TerminalSquare } from 'lucide-react';
+import { clsx } from 'clsx';
 
 interface Props {
   onSubmit: (prompt: string) => Promise<void>;
@@ -10,93 +11,87 @@ interface Props {
 
 export function AgentPanel({ onSubmit }: Props) {
   const { messages, actionLogs, approvalRequests, providerConfigs, selectedProviderId, setSelectedProviderId } = useAppStore();
-  const [prompt, setPrompt] = useState('Summarize the current file and suggest the next refactor.');
-  const selectedProvider = useMemo(
-    () => providerConfigs.find((provider: ProviderConfig) => provider.id === selectedProviderId),
-    [providerConfigs, selectedProviderId]
-  );
+  const [prompt, setPrompt] = useState('');
 
   return (
     <aside className="panel agent-panel">
-      <div className="panel__header stacked-gap">
-        <div>
+      <div className="panel__header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Bot size={16} className="text-secondary" />
           <h3>Agent</h3>
-          <p>Single-agent workflow with explicit tools, logs, and approvals.</p>
         </div>
-        <select value={selectedProviderId ?? ''} onChange={(event) => setSelectedProviderId(event.target.value || undefined)}>
-          <option value="">No provider selected</option>
+        <select className="settings-select" style={{ maxWidth: '140px', padding: '2px 8px' }} value={selectedProviderId ?? ''} onChange={(event) => setSelectedProviderId(event.target.value || undefined)}>
+          <option value="">Select provider</option>
           {providerConfigs.map((provider: ProviderConfig) => (
             <option key={provider.id} value={provider.id}>
-              {provider.label} · {provider.model}
+              {provider.label}
             </option>
           ))}
         </select>
       </div>
 
-      <div className="agent-warning">
-        Antimatter does not provide a model. Speed, latency, and quality depend on the provider, endpoint, or hardware you connect.
-      </div>
-
-      <div className="agent-section">
-        <strong>Conversation</strong>
-        <div className="message-list">
-          {messages.map((message: AgentMessage) => (
-            <article key={message.id} className={`message message--${message.role}`}>
-              <header>{message.role}</header>
-              <p>{message.content}</p>
-            </article>
-          ))}
-        </div>
-      </div>
-
-      <div className="agent-section">
-        <strong>Tools</strong>
-        <div className="tool-pills">
-          {builtInTools.map((tool) => (
-            <span key={tool.id} className="pill">
-              {tool.label}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="agent-section">
-        <strong>Action log</strong>
-        <div className="log-list">
-          {actionLogs.length === 0 ? (
-            <div className="empty-state compact">No actions yet.</div>
-          ) : (
-            actionLogs.map((log: AgentActionLog) => (
-              <article key={log.id} className="log-entry">
-                <header>{log.title}</header>
-                <p>{log.detail}</p>
-              </article>
-            ))
-          )}
-        </div>
-      </div>
-
-      {approvalRequests.length > 0 && (
+      <div className="agent-scroll-area" style={{ flex: 1, overflowY: 'auto' }}>
         <div className="agent-section">
-          <strong>Approvals</strong>
-          {approvalRequests.map((request: ApprovalRequest) => (
-            <DiffPreviewCard key={request.id} request={request} />
-          ))}
+          <div className="message-list">
+            {messages.length === 0 ? (
+               <div className="empty-state compact">How can I help you today?</div>
+            ) : (
+              messages.map((message: AgentMessage) => (
+                <article key={message.id} className={clsx('message', `message--${message.role}`)}>
+                  <header style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {message.role === 'assistant' || message.role === 'tool' ? <Bot size={12} /> : <User size={12} />}
+                    {message.role}
+                  </header>
+                  <p>{message.content}</p>
+                </article>
+              ))
+            )}
+          </div>
         </div>
-      )}
+
+        {actionLogs.length > 0 && (
+          <div className="agent-section">
+            <strong style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><TerminalSquare size={12}/> Action Log</strong>
+            <div className="log-list">
+              {actionLogs.map((log: AgentActionLog) => (
+                <article key={log.id} className="log-entry">
+                  <header>{log.title}</header>
+                  <p>{log.detail}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {approvalRequests.length > 0 && (
+          <div className="agent-section">
+            <strong>Approvals</strong>
+            {approvalRequests.map((request: ApprovalRequest) => (
+              <DiffPreviewCard key={request.id} request={request} />
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="agent-compose">
-        <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={5} />
-        <button
-          className="button primary"
-          onClick={() => {
-            void onSubmit(prompt);
-            setPrompt('');
-          }}
-        >
-          Run agent
-        </button>
-        <div className="helper-text">Current provider: {selectedProvider ? `${selectedProvider.label} / ${selectedProvider.model}` : 'none selected'}</div>
+        <textarea 
+          value={prompt} 
+          onChange={(event) => setPrompt(event.target.value)} 
+          placeholder="Ask the agent to build something..."
+          rows={3} 
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+          <button
+            className="button primary"
+            disabled={!prompt.trim() || !selectedProviderId}
+            onClick={() => {
+              void onSubmit(prompt);
+              setPrompt('');
+            }}
+          >
+            <Send size={14} style={{ marginRight: '6px' }} /> Run agent
+          </button>
+        </div>
       </div>
     </aside>
   );

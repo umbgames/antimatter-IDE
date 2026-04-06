@@ -200,8 +200,11 @@ export function Toolbar({
   const activeMenuDef = menus.find((m) => m.label === activeMenu);
 
   return (
-    <div className="toolbar">
-      <nav className="toolbar__menus">
+    <div className="toolbar" data-tauri-drag-region>
+      <div className="toolbar__brand" data-tauri-drag-region>
+        <div className="brand-mark">A</div>
+      </div>
+      <nav className="toolbar__menus" data-tauri-drag-region>
         {menus.map((menu) => (
           <button
             key={menu.label}
@@ -214,12 +217,49 @@ export function Toolbar({
           </button>
         ))}
       </nav>
+      <div className="toolbar__drag-space" data-tauri-drag-region style={{ flex: 1, height: '100%' }} />
       <div className="toolbar__actions">
         <button className="button subtle" onClick={onOpenProviders}>
           Providers
         </button>
         <button className="button subtle" onClick={onOpenSettings}>
           ⚙
+        </button>
+      </div>
+
+      <div className="toolbar__window-controls">
+        <button 
+          className="window-control minimize" 
+          onClick={async () => {
+            const { getCurrentWindow } = await import('@tauri-apps/api/window');
+            await getCurrentWindow().minimize();
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="1" y="4" width="8" height="1" fill="currentColor"/>
+          </svg>
+        </button>
+        <button 
+          className="window-control maximize" 
+          onClick={async () => {
+             const { getCurrentWindow } = await import('@tauri-apps/api/window');
+             await getCurrentWindow().toggleMaximize();
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="1.5" y="1.5" width="7" height="7" stroke="currentColor" fill="none"/>
+          </svg>
+        </button>
+        <button 
+          className="window-control close" 
+          onClick={async () => {
+             const { getCurrentWindow } = await import('@tauri-apps/api/window');
+             await getCurrentWindow().close();
+          }}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2.5 2.5L7.5 7.5M7.5 2.5L2.5 7.5" stroke="currentColor" strokeLinecap="round"/>
+          </svg>
         </button>
       </div>
 

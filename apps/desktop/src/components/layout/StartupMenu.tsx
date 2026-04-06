@@ -1,6 +1,7 @@
 import type { RecentProject } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { openFolderPicker, readDirectory, saveRecentProject } from '@/lib/tauri';
+import { FolderOpen, FilePlus, HardDrive } from 'lucide-react';
 
 export function StartupMenu() {
   const { recentProjects, setWorkspacePath, setWorkspaceEntries, setRecentProjects } = useAppStore();
@@ -46,10 +47,10 @@ export function StartupMenu() {
           
           <div className="row-actions startup-actions">
             <button className="button primary large" onClick={handleOpenFolder}>
-              <span>📂</span> Open Folder...
+              <FolderOpen size={16} /> Open Folder...
             </button>
             <button className="button subtle large" onClick={handleEmptyWorkspace}>
-              <span>📄</span> New Empty Workspace
+              <FilePlus size={16} /> New Empty Workspace
             </button>
           </div>
         </div>
@@ -66,9 +67,12 @@ export function StartupMenu() {
                   className="recent-item startup-recent-item"
                   onClick={() => handleRecentClick(project.path)}
                 >
-                  <div className="recent-item-info">
-                    <strong>{project.name}</strong>
-                    <span>{project.path}</span>
+                  <div className="recent-item-info" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <HardDrive size={16} className="text-secondary" />
+                    <div>
+                      <strong>{project.name}</strong>
+                      <span style={{ display: 'block' }}>{project.path}</span>
+                    </div>
                   </div>
                   <span className="recent-item-date">{new Date(project.lastOpenedAt).toLocaleDateString()}</span>
                 </button>

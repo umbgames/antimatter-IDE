@@ -3,6 +3,7 @@ import type { WorkspaceEntry } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { openFileAsTab, readDirectory } from '@/lib/tauri';
 import { clsx } from 'clsx';
+import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText } from 'lucide-react';
 
 interface FileTreeItemProps {
   entry: WorkspaceEntry;
@@ -45,13 +46,16 @@ function FileTreeItem({ entry, depth }: FileTreeItemProps) {
         style={{ paddingLeft: `${depth * 12 + 12}px` }}
         onClick={toggleOpen}
       >
-        <span className="tree-item__icon">
+        <span className="tree-item__icon" style={{ display: 'flex', alignItems: 'center' }}>
           {entry.isDirectory ? (
-            <span className={clsx('chevron', { 'expanded': isOpen })}>
-              {isOpen ? '▼' : '▶'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', opacity: 0.6, marginRight: '4px' }}>
+              {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </span>
+          ) : null}
+          {entry.isDirectory ? (
+            isOpen ? <FolderOpen size={14} /> : <Folder size={14} />
           ) : (
-            '📄'
+            <FileText size={14} style={{ opacity: 0.8 }} />
           )}
         </span>
         <span className="tree-item__label">{entry.name}</span>

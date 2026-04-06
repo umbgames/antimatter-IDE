@@ -1,10 +1,8 @@
 import React, { useEffect, useMemo } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { clsx } from 'clsx';
-import { APP_NAME } from '@antimatter/shared';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { CommandPalette } from './components/palette/CommandPalette';
-import { TitleBar } from './components/layout/TitleBar';
 import { Toolbar } from './components/layout/Toolbar';
 import { FileExplorer } from './components/explorer/FileExplorer';
 import { EditorShell } from './components/editor/EditorShell';
@@ -195,7 +193,11 @@ export function App() {
     const context = {
       provider: selectedProvider,
       messages: [...messages, userMessage],
-      workspacePath: workspacePath || undefined
+      workspacePath: workspacePath || undefined,
+      createChat: async (request: any, config: any) => {
+        const tauri = await import('./lib/tauri');
+        return await tauri.chatWithProvider(config.id, request.messages);
+      }
     };
 
     const result = await runAgentLoop(context, async (toolId, args) => {
@@ -233,7 +235,6 @@ export function App() {
   /* ─── Render ─── */
   return (
     <div className="app-shell">
-      <TitleBar title={APP_NAME} />
       <Toolbar
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenProviders={() => setProvidersOpen(true)}
