@@ -3,5 +3,16 @@
   "identifier": "default",
   "description": "Default capability for the Antimatter desktop app.",
   "windows": ["main"],
-  "permissions": ["core:default", "shell:default"]
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [{ "name": "powershell", "cmd": "powershell" }]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [{ "name": "powershell", "cmd": "powershell" }]
+    }
+  ]
 }

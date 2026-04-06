@@ -18,7 +18,7 @@ import { SearchPanel } from './components/explorer/SearchPanel';
 import { SourceControlPanel } from './components/explorer/SourceControlPanel';
 import { codebaseIndexer } from './services/CodebaseIndexer';
 import { runAgentLoop } from '@antimatter/agents';
-import { useAppStore, deriveSettingsFromStore } from './store/appStore';
+import { useAppStore, deriveSettingsFromStore, initialProviders } from './store/appStore';
 import {
   getRecentProjects,
   loadProviders,
@@ -96,7 +96,14 @@ export function App() {
         setAgentDockSide(settings.agentDockSide);
         setRecentProjects(recentProjects);
         if (providers.length > 0) {
-          setProviderConfigs(providers);
+          const mergedProviders = initialProviders.map((defaultConfig) => {
+            const saved = providers.find((p) => p.id === defaultConfig.id || p.kind === defaultConfig.kind);
+            return saved ? { ...defaultConfig, ...saved } : defaultConfig;
+          });
+          const customProviders = providers.filter(
+            (p) => !initialProviders.some((def) => def.id === p.id || def.kind === p.kind)
+          );
+          setProviderConfigs([...mergedProviders, ...customProviders]);
         }
         if (settings.defaultProviderId) {
           setSelectedProviderId(settings.defaultProviderId);

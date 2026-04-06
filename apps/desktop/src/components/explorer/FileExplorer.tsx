@@ -1,20 +1,48 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { WorkspaceEntry } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { openFileAsTab, readDirectory } from '@/lib/tauri';
 import { clsx } from 'clsx';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText } from 'lucide-react';
+import { Command } from '@tauri-apps/plugin-shell';
+
+interface ContextMenuConfig {
+  x: number;
+  y: number;
+  entry: WorkspaceEntry;
+}
 
 interface FileTreeItemProps {
   entry: WorkspaceEntry;
   depth: number;
+  onContextMenu: (e: React.MouseEvent, entry: WorkspaceEntry) => void;
+  refreshTrigger: number;
 }
 
-function FileTreeItem({ entry, depth }: FileTreeItemProps) {
+function FileTreeItem({ entry, depth, onContextMenu, refreshTrigger }: FileTreeItemProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [children, setChildren] = useState<WorkspaceEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { openFile } = useAppStore();
+
+  const loadChildren = async () => {
+    if (!entry.isDirectory) return;
+    setIsLoading(true);
+    try {
+      const results = await readDirectory(entry.path);
+      setChildren(results);
+    } catch (err) {
+      console.error('Failed to load sub-directory', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && entry.isDirectory) {
+      loadChildren();
+    }
+  }, [isOpen, refreshTrigger, entry.path]);
 
   const toggleOpen = async () => {
     if (!entry.isDirectory) {
@@ -22,21 +50,7 @@ function FileTreeItem({ entry, depth }: FileTreeItemProps) {
       openFile(file);
       return;
     }
-
-    const nextOpen = !isOpen;
-    setIsOpen(nextOpen);
-
-    if (nextOpen && children.length === 0) {
-      setIsLoading(true);
-      try {
-        const results = await readDirectory(entry.path);
-        setChildren(results);
-      } catch (err) {
-        console.error('Failed to load sub-directory', err);
-      } finally {
-        setIsLoading(false);
-      }
-    }
+    setIsOpen(!isOpen);
   };
 
   return (
@@ -45,6 +59,7 @@ function FileTreeItem({ entry, depth }: FileTreeItemProps) {
         className={clsx('tree-item', { 'is-directory': entry.isDirectory, 'is-open': isOpen })}
         style={{ paddingLeft: `${depth * 12 + 12}px` }}
         onClick={toggleOpen}
+        onContextMenu={(e) => onContextMenu(e, entry)}
       >
         <span className="tree-item__icon" style={{ display: 'flex', alignItems: 'center' }}>
           {entry.isDirectory ? (
@@ -66,11 +81,17 @@ function FileTreeItem({ entry, depth }: FileTreeItemProps) {
         <div className="tree-item__children">
           {children.length === 0 && !isLoading ? (
             <div className="tree-item empty-state" style={{ paddingLeft: `${(depth + 1) * 12 + 12}px` }}>
-              (empty)
+               (empty)
             </div>
           ) : (
             children.map((child) => (
-              <FileTreeItem key={child.path} entry={child} depth={depth + 1} />
+              <FileTreeItem 
+                key={child.path} 
+                entry={child} 
+                depth={depth + 1} 
+                onContextMenu={onContextMenu} 
+                refreshTrigger={refreshTrigger}
+              />
             ))
           )}
         </div>
@@ -81,10 +102,78 @@ function FileTreeItem({ entry, depth }: FileTreeItemProps) {
 
 export function FileExplorer() {
   const { workspacePath, workspaceEntries, setWorkspacePath, setWorkspaceEntries } = useAppStore();
+  const [contextMenu, setContextMenu] = useState<ContextMenuConfig | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const handleCloseWorkspace = () => {
     setWorkspacePath(undefined);
     setWorkspaceEntries([]);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, entry: WorkspaceEntry) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, entry });
+  };
+
+  const closeMenu = () => setContextMenu(null);
+
+  const refreshWorkspace = async () => {
+    if (!workspacePath) return;
+    try {
+      const results = await readDirectory(workspacePath);
+      setWorkspaceEntries(results);
+      setRefreshTrigger(v => v + 1);
+    } catch {}
+    closeMenu();
+  };
+
+  const executePowerShell = async (cmdString: string) => {
+    try {
+      await Command.create('powershell', ['-c', cmdString]).execute();
+      setTimeout(() => refreshWorkspace(), 200);
+    } catch (e) {
+      console.error("Shell error", e);
+    }
+  };
+
+  const handleRename = () => {
+    if (!contextMenu) return;
+    const newName = prompt('New name:', contextMenu.entry.name);
+    if (newName && newName !== contextMenu.entry.name) {
+       executePowerShell(`Rename-Item "${contextMenu.entry.path}" "${newName}"`);
+    }
+    closeMenu();
+  };
+
+  const handleDelete = () => {
+    if (!contextMenu) return;
+    if (confirm(`Are you sure you want to delete ${contextMenu.entry.name}?`)) {
+       executePowerShell(`Remove-Item -Recurse -Force "${contextMenu.entry.path}"`);
+    }
+    closeMenu();
+  };
+
+  const handleNewFile = () => {
+    if (!contextMenu) return;
+    const isDir = contextMenu.entry.isDirectory;
+    const parentPath = isDir ? contextMenu.entry.path : contextMenu.entry.path.substring(0, contextMenu.entry.path.lastIndexOf('\\'));
+    const newName = prompt('New file name:');
+    if (newName) {
+       executePowerShell(`New-Item -Path "${parentPath}\\${newName}" -ItemType File`);
+    }
+    closeMenu();
+  };
+
+  const handleNewFolder = () => {
+    if (!contextMenu) return;
+    const isDir = contextMenu.entry.isDirectory;
+    const parentPath = isDir ? contextMenu.entry.path : contextMenu.entry.path.substring(0, contextMenu.entry.path.lastIndexOf('\\'));
+    const newName = prompt('New folder name:');
+    if (newName) {
+       executePowerShell(`New-Item -Path "${parentPath}\\${newName}" -ItemType Directory`);
+    }
+    closeMenu();
   };
 
   if (!workspacePath) {
@@ -101,7 +190,7 @@ export function FileExplorer() {
   }
 
   return (
-    <aside className="panel explorer-panel">
+    <aside className="panel explorer-panel" onClick={closeMenu}>
       <div className="panel__header">
         <div className="flex-between">
           <div>
@@ -114,15 +203,39 @@ export function FileExplorer() {
         </div>
       </div>
       
-      <div className="explorer-tree">
+      <div className="explorer-tree" onContextMenu={(e) => {
+        // Workspace-level context menu
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY, entry: { name: 'Root', path: workspacePath, isDirectory: true } })
+      }}>
         {workspaceEntries.length === 0 ? (
-          <div className="empty-state compact">No files found.</div>
+          <div className="empty-state compact">No files found. Right click to create one.</div>
         ) : (
           workspaceEntries.map((entry: WorkspaceEntry) => (
-            <FileTreeItem key={entry.path} entry={entry} depth={0} />
+            <FileTreeItem 
+              key={entry.path} 
+              entry={entry} 
+              depth={0} 
+              onContextMenu={handleContextMenu}
+              refreshTrigger={refreshTrigger}
+            />
           ))
         )}
       </div>
+
+      {contextMenu && (
+        <div 
+          className="dropdown-menu" 
+          style={{ top: contextMenu.y, left: contextMenu.x, width: '180px' }} 
+          onClick={e => e.stopPropagation()}
+        >
+          <button className="dropdown-menu__item" onClick={handleNewFile}>New File...</button>
+          <button className="dropdown-menu__item" onClick={handleNewFolder}>New Folder...</button>
+          <div className="dropdown-menu__separator" />
+          <button className="dropdown-menu__item" onClick={handleRename}>Rename</button>
+          <button className="dropdown-menu__item" onClick={handleDelete} style={{ color: 'var(--danger)' }}>Delete</button>
+        </div>
+      )}
     </aside>
   );
 }

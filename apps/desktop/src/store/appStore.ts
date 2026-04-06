@@ -74,7 +74,7 @@ interface AppState {
   setActivePersona: (persona: 'engineer' | 'architect' | 'qa') => void;
 }
 
-const initialProviders: ProviderConfig[] = providerDefaults.map((provider, index) => ({
+export const initialProviders: ProviderConfig[] = providerDefaults.map((provider, index) => ({
   id: `provider-${index + 1}`,
   label: provider.label,
   kind: provider.kind,

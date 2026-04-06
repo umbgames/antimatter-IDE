@@ -1,15 +1,15 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect } from 'react';
 import { useAppStore } from '@/store/appStore';
-import { executeTerminal } from '@/lib/tauri';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { Command } from '@tauri-apps/plugin-shell';
 
 export function BottomPanel() {
   const { bottomPanelTab, setBottomPanelTab, workspacePath } = useAppStore();
-  const [command, setCommand] = useState('');
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const childRef = useRef<any>(null);
 
   useEffect(() => {
     if (!terminalRef.current || xtermRef.current) return;
@@ -34,8 +34,36 @@ export function BottomPanel() {
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    term.writeln('\x1B[1;34mAntimatter Terminal\x1B[0m');
-    term.writeln('Type a command and press Enter.\n');
+    let unlistenStdout: any = null;
+    let unlistenStderr: any = null;
+
+    const startShell = async () => {
+      try {
+        const cmd = Command.create('powershell', ['-NoLogo'], { cwd: workspacePath || undefined });
+        cmd.on('close', () => { term.writeln('\r\nConsole closed.'); });
+        cmd.on('error', err => { term.writeln('\r\n\x1B[31mConsole error: ' + err + '\x1B[0m'); });
+        
+        const child = await cmd.spawn();
+        childRef.current = child;
+
+        // Route keystrokes properly
+        term.onData((data) => {
+          child.write(data);
+        });
+
+        unlistenStdout = await cmd.stdout.on('data', (line) => {
+          term.write(line);
+        });
+        unlistenStderr = await cmd.stderr.on('data', (line) => {
+          term.write(`\x1B[31m${line}\x1B[0m`);
+        });
+
+      } catch (e: any) {
+        term.writeln(`\r\n\x1B[31mFailed to start shell: ${e.message}\x1B[0m`);
+      }
+    };
+    
+    startShell();
 
     const handleResize = () => {
       fitAddon.fit();
@@ -44,36 +72,15 @@ export function BottomPanel() {
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      if (childRef.current) {
+         childRef.current.kill().catch(() => {});
+      }
+      if (unlistenStdout) unlistenStdout();
+      if (unlistenStderr) unlistenStderr();
       term.dispose();
       xtermRef.current = null;
     };
-  }, []);
-
-  const run = useCallback(async (cmd?: string) => {
-    const activeCmd = cmd || command;
-    if (!activeCmd.trim()) return;
-    
-    setCommand('');
-    const term = xtermRef.current;
-    if (term) {
-      term.writeln(`\r\n\x1B[1;32m$ ${activeCmd}\x1B[0m`);
-    }
-    
-    try {
-      const result = await executeTerminal({ cwd: workspacePath ?? '.', command: activeCmd });
-      if (term) {
-        if (result.message) term.writeln(`\x1B[1;30m${result.message}\x1B[0m`);
-        if (result.stdout) term.write(result.stdout);
-        if (result.stderr) term.write(`\x1B[31m${result.stderr}\x1B[0m`);
-      }
-    } catch (e: any) {
-      term?.writeln(`\x1B[31mError: ${e.message}\x1B[0m`);
-    }
-  }, [command, workspacePath]);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') run();
-  };
+  }, [workspacePath]);
 
   useEffect(() => {
     if (bottomPanelTab === 'terminal' && fitAddonRef.current) {
@@ -92,18 +99,7 @@ export function BottomPanel() {
       </div>
       {bottomPanelTab === 'terminal' && (
         <div className="terminal-panel">
-          <div className="terminal-input-row" style={{ borderBottom: '1px solid var(--border)' }}>
-            <span style={{ color: 'var(--accent)', fontFamily: 'var(--font-mono)', fontSize: '13px', display: 'flex', alignItems: 'center', paddingLeft: '8px' }}>$</span>
-            <input 
-              value={command} 
-              onChange={(event) => setCommand(event.target.value)} 
-              onKeyDown={handleKeyDown}
-              style={{ flex: 1, background: 'transparent', border: 'none', color: 'var(--text)', fontFamily: 'var(--font-mono)', outline: 'none' }}
-              placeholder="Type command..."
-              autoFocus
-            />
-          </div>
-          <div className="terminal-output" style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="terminal-output" style={{ padding: 0, overflow: 'hidden', borderTop: 'none' }}>
              <div ref={terminalRef} style={{ height: '100%', width: '100%' }} />
           </div>
         </div>

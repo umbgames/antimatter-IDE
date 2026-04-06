@@ -54,10 +54,10 @@ export function AgentPanel({ onSubmit }: Props) {
                <div className="empty-state compact">How can I help you today?</div>
             ) : (
               messages.map((message: AgentMessage) => (
-                <article key={message.id} className={clsx('message', `message--${message.role}`)}>
+                <article key={message.id} className={clsx('message', `message--${message.role}`, { 'message--error': message.role === 'assistant' && message.content.startsWith('Error:') })}>
                   <header style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {message.role === 'assistant' || message.role === 'tool' ? <Bot size={12} /> : <User size={12} />}
-                    {message.role}
+                    {message.role === 'assistant' && message.content.startsWith('Error:') ? 'System Error' : message.role}
                   </header>
                   <p>{message.content}</p>
                 </article>
