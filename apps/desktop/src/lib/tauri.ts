@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import type {
   AppSettings,
+  GitStatus,
   OpenFile,
   ProviderConfig,
   ProviderTestResult,
@@ -58,6 +59,14 @@ export async function testProviderConnection(config: ProviderConfig): Promise<Pr
 
 export async function executeTerminal(request: TerminalRequest): Promise<TerminalResponse> {
   return invoke('execute_terminal_command', { request });
+}
+
+export async function getGitStatus(path: string): Promise<GitStatus> {
+  return invoke('get_git_status', { path });
+}
+
+export async function getGitDiff(path: string, staged: boolean): Promise<string> {
+  return invoke('get_git_diff', { path, staged });
 }
 
 export async function openFolderPicker(): Promise<string | null> {

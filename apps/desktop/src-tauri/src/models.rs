@@ -78,3 +78,18 @@ pub struct ChatMessage {
     pub role: String,
     pub content: String,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GitFile {
+    pub path: String,
+    pub status: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStatus {
+    pub branch: String,
+    pub staged: Vec<GitFile>,
+    pub unstaged: Vec<GitFile>,
+}

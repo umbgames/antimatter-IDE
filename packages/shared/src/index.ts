@@ -102,5 +102,16 @@ export interface TerminalResponse {
   message?: string;
 }
 
+export interface GitFile {
+  path: string;
+  status: 'staged' | 'unstaged' | 'modified';
+}
+
+export interface GitStatus {
+  branch: string;
+  staged: GitFile[];
+  unstaged: GitFile[];
+}
+
 export const APP_NAME = 'Antimatter';
 export const APP_TAGLINE = 'A local-first agentic IDE for developers who want leverage without lock-in.';

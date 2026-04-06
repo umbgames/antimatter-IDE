@@ -6,6 +6,7 @@ export interface AgentRunContext {
   provider?: ProviderConfig;
   messages: AgentMessage[];
   workspacePath?: string;
+  persona?: 'engineer' | 'architect' | 'qa';
   createChat?: (request: { model: string; messages: { role: string; content: string }[] }, config: ProviderConfig) => Promise<string>;
 }
 
@@ -21,7 +22,22 @@ export interface ToolCall {
   raw: string;
 }
 
-const SYSTEM_PROMPT = `
+const ENGINEER_PROMPT = `
+You are the Antimatter Engineer. Your focus is on writing clean, efficient, and well-tested code.
+You prioritize implementation details, bug fixes, and feature additions.
+`;
+
+const ARCHITECT_PROMPT = `
+You are the Antimatter Architect. Your focus is on high-level system design, scalability, and technical debt.
+You prioritize modularity, patterns, and overall project structure.
+`;
+
+const QA_PROMPT = `
+You are the Antimatter QA. Your focus is on reliability, edge cases, and testing.
+You prioritize finding bugs, writing test suites, and ensuring code quality.
+`;
+
+const BASE_SYSTEM_PROMPT = `
 You are Antimatter, a powerful agentic IDE assistant built by UMB GAMES AND TECHNOLOGY LTD.
 You help the user by reasoning through complex tasks and using tools to observe or modify the workspace.
 
@@ -70,8 +86,11 @@ export async function runAgentLoop(
   });
 
   try {
+    const personaPrompt = context.persona === 'architect' ? ARCHITECT_PROMPT : 
+                          context.persona === 'qa' ? QA_PROMPT : ENGINEER_PROMPT;
+    
     const chatMessages = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: BASE_SYSTEM_PROMPT + "\n" + personaPrompt },
       ...currentMessages.map(m => ({ role: m.role as any, content: m.content }))
     ];
 
@@ -111,6 +130,28 @@ export async function runAgentLoop(
 
         // Handle approvals
         if (tool.risk === 'approval-required' || tool.risk === 'guarded') {
+          let diffPayload = undefined;
+          
+          if (toolId === 'write-file' || toolId === 'patch-file') {
+             try {
+               const args = toolArgs as any;
+               const original = await executeTool('read-file', { path: args.path });
+               diffPayload = {
+                 filePath: args.path,
+                 original: typeof original === 'string' ? original : '',
+                 proposed: args.content || ''
+               };
+             } catch (e) {
+               const args = toolArgs as any;
+               // Fallback if file doesn't exist yet
+               diffPayload = {
+                 filePath: args.path,
+                 original: '',
+                 proposed: args.content || ''
+               };
+             }
+          }
+
           return {
             reply: { id: crypto.randomUUID(), role: 'assistant', content: response, createdAt: now },
             logs,
@@ -119,7 +160,7 @@ export async function runAgentLoop(
               title: `Approve ${tool.label}`,
               description: `Agent wants to ${tool.description.toLowerCase()}`,
               risk: tool.risk === 'guarded' ? 'high' : 'medium',
-              // Note: Ideally we'd calculate a diff here for file writes
+              diff: diffPayload
             }]
           };
         }

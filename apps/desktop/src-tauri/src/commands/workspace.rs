@@ -1,5 +1,5 @@
-use crate::models::{SearchResult, TerminalRequest, TerminalResponse, WorkspaceEntry};
-use std::{fs, path::PathBuf, process::Command};
+use crate::models::{SearchResult, TerminalRequest, TerminalResponse, WorkspaceEntry, GitStatus, GitFile};
+use std::{fs, path::PathBuf, process::Command, str};
 use walkdir::WalkDir;
 
 #[tauri::command]
@@ -98,4 +98,74 @@ pub fn execute_terminal_command(request: TerminalRequest) -> TerminalResponse {
             message: Some("Terminal execution failed before process launch.".into()),
         },
     }
+}
+#[tauri::command]
+pub fn get_git_status(path: String) -> Result<GitStatus, String> {
+    let mut status = GitStatus {
+        staged: Vec::new(),
+        unstaged: Vec::new(),
+        branch: String::new(),
+    };
+
+    let cwd = PathBuf::from(path);
+    if !cwd.join(".git").exists() {
+        return Err("Not a git repository".into());
+    }
+
+    // Get branch name
+    let branch_output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| e.to_string())?;
+    status.branch = String::from_utf8_lossy(&branch_output.stdout).trim().into();
+
+    // Get status porcelan
+    let status_output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| e.to_string())?;
+    
+    let stdout = String::from_utf8_lossy(&status_output.stdout);
+    for line in stdout.lines() {
+        if line.len() < 3 { continue; }
+        let (x, y) = (line.chars().nth(0).unwrap(), line.chars().nth(1).unwrap());
+        let file_path = &line[3..];
+
+        let git_file = GitFile {
+            path: file_path.into(),
+            status: match (x, y) {
+                ('A', _) | ('M', ' ') | ('D', ' ') | ('R', ' ') => "staged",
+                (_, 'M') | (_, 'D') | ('?', '?') => "unstaged",
+                _ => "modified", // general
+            }.into(),
+        };
+
+        if x != ' ' && x != '?' {
+            status.staged.push(git_file.clone());
+        }
+        if y != ' ' || x == '?' {
+            status.unstaged.push(git_file);
+        }
+    }
+
+    Ok(status)
+}
+
+#[tauri::command]
+pub fn get_git_diff(path: String, staged: bool) -> Result<String, String> {
+    let cwd = PathBuf::from(path);
+    let mut args = vec!["diff"];
+    if staged {
+        args.push("--cached");
+    }
+
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(&cwd)
+        .output()
+        .map_err(|e| e.to_string())?;
+    
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }

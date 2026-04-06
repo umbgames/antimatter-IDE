@@ -10,7 +10,8 @@ export function SettingsDrawer({ open, onClose }: Props) {
     theme, setTheme, 
     agentDockSide, setAgentDockSide, 
     bottomPanelOpen, toggleBottomPanel,
-    providerConfigs, selectedProviderId, setSelectedProviderId 
+    providerConfigs, selectedProviderId, setSelectedProviderId,
+    inlineCompletionsEnabled, setInlineCompletionsEnabled
   } = useAppStore();
 
   if (!open) return null;
@@ -65,6 +66,10 @@ export function SettingsDrawer({ open, onClose }: Props) {
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="checkbox-row" style={{ marginTop: '12px' }}>
+              <input type="checkbox" checked={inlineCompletionsEnabled} onChange={(e) => setInlineCompletionsEnabled(e.target.checked)} />
+              <span>Enable Inline AI Autocomplete (Ghost Text)</span>
             </label>
             <label className="checkbox-row" style={{ marginTop: '12px' }}>
               <input type="checkbox" checked={bottomPanelOpen} onChange={toggleBottomPanel} />

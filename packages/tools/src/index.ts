@@ -37,5 +37,11 @@ export const builtInTools: ToolDescriptor[] = [
     label: 'Terminal Execution',
     description: 'Run a terminal command through a guarded execution policy.',
     risk: 'guarded'
+  },
+  {
+    id: 'query-codebase',
+    label: 'Query Codebase',
+    description: 'Perform a semantic search across the codebase using local embeddings to find relevant code snippets.',
+    risk: 'read-only'
   }
 ];

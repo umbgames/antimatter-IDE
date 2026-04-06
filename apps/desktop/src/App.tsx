@@ -11,9 +11,12 @@ import { AgentPanel } from './components/agents/AgentPanel';
 import { StatusBar } from './components/layout/StatusBar';
 import { SettingsDrawer } from './components/settings/SettingsDrawer';
 import { ProviderSettingsModal } from './components/providers/ProviderSettingsModal';
+import { DiffReviewModal } from './components/editor/DiffReviewModal';
 import { WelcomeScreen } from './components/welcome/WelcomeScreen';
 import { StartupMenu } from './components/layout/StartupMenu';
 import { SearchPanel } from './components/explorer/SearchPanel';
+import { SourceControlPanel } from './components/explorer/SourceControlPanel';
+import { codebaseIndexer } from './services/CodebaseIndexer';
 import { runAgentLoop } from '@antimatter/agents';
 import { useAppStore, deriveSettingsFromStore } from './store/appStore';
 import {
@@ -53,14 +56,38 @@ export function App() {
     setApprovalRequests,
     saveFileLocallyMarked,
     toggleBottomPanel,
-    setWelcomeVisible
+    setWelcomeVisible,
+    setPendingChange,
+    workspaceEntries,
+    activePersona
   } = useAppStore();
 
-  const [sidebarTab, setSidebarTab] = React.useState<'explorer' | 'search'>('explorer');
+  const [sidebarTab, setSidebarTab] = React.useState<'explorer' | 'search' | 'source'>('explorer');
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  // Index workspace for semantic search
+  useEffect(() => {
+    if (workspacePath && workspaceEntries.length > 0) {
+       const runIndexing = async () => {
+         const files = workspaceEntries
+           .filter((e: any) => !e.isDirectory && !e.path.includes('.git') && (e.path.endsWith('.ts') || e.path.endsWith('.tsx') || e.path.endsWith('.rs')))
+           .slice(0, 50);
+
+         const fileData = await Promise.all(
+           files.map(async (f: any) => ({
+             path: f.path,
+             content: await (await import('./lib/tauri')).readWorkspaceFile(f.path)
+           }))
+         );
+         
+         await codebaseIndexer.index(fileData);
+       };
+       runIndexing();
+    }
+  }, [workspacePath, workspaceEntries]);
 
   useEffect(() => {
     void Promise.all([loadSettings(), getRecentProjects(), loadProviders()])
@@ -194,6 +221,7 @@ export function App() {
       provider: selectedProvider,
       messages: [...messages, userMessage],
       workspacePath: workspacePath || undefined,
+      persona: activePersona,
       createChat: async (request: any, config: any) => {
         const tauri = await import('./lib/tauri');
         return await tauri.chatWithProvider(config.id, request.messages);
@@ -207,9 +235,16 @@ export function App() {
       switch (toolId) {
         case 'read-file':
           return await tauri.readWorkspaceFile(args.path);
+        case 'write-file':
+        case 'patch-file':
+          // Approvals are handled by the agent loop return, but we need to return something here
+          // if it's a read-only request for the diffing
+          return await tauri.readWorkspaceFile(args.path);
         case 'search-workspace':
           if (!workspacePath) throw new Error('No workspace open');
           return await tauri.searchWorkspace(workspacePath, args.query);
+        case 'query-codebase':
+          return await codebaseIndexer.search(args.query);
         case 'terminal-exec':
           if (!workspacePath) throw new Error('No workspace open');
           return await tauri.executeTerminal({ cwd: workspacePath, command: args.command });
@@ -221,6 +256,12 @@ export function App() {
     appendLogs(result.logs);
     setApprovalRequests(result.approvalRequests);
     appendMessage(result.reply);
+
+    // If there's a diff in the FIRST approval request (standard workflow), surface it immediately
+    const firstWithDiff = result.approvalRequests.find(r => r.diff);
+    if (firstWithDiff?.diff) {
+      setPendingChange(firstWithDiff.diff);
+    }
   };
 
   /* ─── Persist Settings ─── */
@@ -275,8 +316,16 @@ export function App() {
               >
                 Search
               </button>
+              <button 
+                className={clsx('sidebar-tab', { active: sidebarTab === 'source' })}
+                onClick={() => setSidebarTab('source')}
+              >
+                Source
+              </button>
             </div>
-            {sidebarTab === 'explorer' ? <FileExplorer /> : <SearchPanel />}
+            {sidebarTab === 'explorer' && <FileExplorer />}
+            {sidebarTab === 'search' && <SearchPanel />}
+            {sidebarTab === 'source' && <SourceControlPanel />}
           </Panel>
           <PanelResizeHandle className="resize-handle vertical" />
 
@@ -311,6 +360,7 @@ export function App() {
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ProviderSettingsModal open={providersOpen} onClose={() => setProvidersOpen(false)} />
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+      <DiffReviewModal />
       {!workspacePath && <StartupMenu />}
     </div>
   );

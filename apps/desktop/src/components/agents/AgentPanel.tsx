@@ -10,7 +10,7 @@ interface Props {
 }
 
 export function AgentPanel({ onSubmit }: Props) {
-  const { messages, actionLogs, approvalRequests, providerConfigs, selectedProviderId, setSelectedProviderId } = useAppStore();
+  const { messages, actionLogs, approvalRequests, providerConfigs, selectedProviderId, setSelectedProviderId, activePersona, setActivePersona } = useAppStore();
   const [prompt, setPrompt] = useState('');
 
   return (
@@ -20,14 +20,31 @@ export function AgentPanel({ onSubmit }: Props) {
           <Bot size={16} className="text-secondary" />
           <h3>Agent</h3>
         </div>
-        <select className="settings-select" style={{ maxWidth: '140px', padding: '2px 8px' }} value={selectedProviderId ?? ''} onChange={(event) => setSelectedProviderId(event.target.value || undefined)}>
-          <option value="">Select provider</option>
-          {providerConfigs.map((provider: ProviderConfig) => (
-            <option key={provider.id} value={provider.id}>
-              {provider.label}
-            </option>
-          ))}
-        </select>
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <select 
+            className="settings-select" 
+            style={{ maxWidth: '100px', padding: '2px 4px', fontSize: '11px' }} 
+            value={activePersona} 
+            onChange={(event) => setActivePersona(event.target.value as any)}
+          >
+            <option value="engineer">Engineer</option>
+            <option value="architect">Architect</option>
+            <option value="qa">QA</option>
+          </select>
+          <select 
+            className="settings-select" 
+            style={{ maxWidth: '120px', padding: '2px 4px', fontSize: '11px' }} 
+            value={selectedProviderId ?? ''} 
+            onChange={(event) => setSelectedProviderId(event.target.value || undefined)}
+          >
+            <option value="">Select provider</option>
+            {providerConfigs.map((provider: ProviderConfig) => (
+              <option key={provider.id} value={provider.id}>
+                {provider.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="agent-scroll-area" style={{ flex: 1, overflowY: 'auto' }}>

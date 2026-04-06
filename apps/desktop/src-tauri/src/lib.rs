@@ -21,6 +21,8 @@ pub fn run() {
             commands::workspace::write_workspace_file,
             commands::workspace::search_workspace,
             commands::workspace::execute_terminal_command,
+            commands::workspace::get_git_status,
+            commands::workspace::get_git_diff,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Antimatter");

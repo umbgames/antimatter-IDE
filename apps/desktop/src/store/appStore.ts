@@ -6,6 +6,8 @@ import type {
   AppSettings,
   ApprovalRequest,
   BottomPanelTab,
+  DiffPreview,
+  GitStatus,
   OpenFile,
   ProviderConfig,
   RecentProject,
@@ -41,6 +43,8 @@ interface AppState {
   approvalRequests: ApprovalRequest[];
   selectedProviderId?: string;
   paletteItems: PaletteItem[];
+  gitStatus?: GitStatus;
+  pendingChange?: DiffPreview;
   setTheme: (theme: ThemeMode) => void;
   setWorkspacePath: (path?: string) => void;
   setWorkspaceEntries: (entries: WorkspaceEntry[]) => void;
@@ -62,6 +66,12 @@ interface AppState {
   setApprovalRequests: (requests: ApprovalRequest[]) => void;
   setSelectedProviderId: (id?: string) => void;
   registerPaletteItems: (items: PaletteItem[]) => void;
+  refreshGitStatus: () => Promise<void>;
+  setPendingChange: (change?: DiffPreview) => void;
+  inlineCompletionsEnabled: boolean;
+  setInlineCompletionsEnabled: (enabled: boolean) => void;
+  activePersona: 'engineer' | 'architect' | 'qa';
+  setActivePersona: (persona: 'engineer' | 'architect' | 'qa') => void;
 }
 
 const initialProviders: ProviderConfig[] = providerDefaults.map((provider, index) => ({
@@ -87,6 +97,8 @@ export const useAppStore = create<AppState>((set) => ({
   welcomeVisible: true,
   recentProjects: [],
   providerConfigs: initialProviders,
+  inlineCompletionsEnabled: true,
+  activePersona: 'engineer',
   messages: [
     {
       id: crypto.randomUUID(),
@@ -142,7 +154,21 @@ export const useAppStore = create<AppState>((set) => ({
   appendLogs: (logs) => set((state) => ({ actionLogs: [...logs, ...state.actionLogs].slice(0, 100) })),
   setApprovalRequests: (approvalRequests) => set({ approvalRequests }),
   setSelectedProviderId: (selectedProviderId) => set({ selectedProviderId }),
-  registerPaletteItems: (paletteItems) => set({ paletteItems })
+  registerPaletteItems: (paletteItems) => set({ paletteItems }),
+  refreshGitStatus: async () => {
+    const { workspacePath } = useAppStore.getState();
+    if (!workspacePath) return;
+    try {
+      const { getGitStatus } = await import('@/lib/tauri');
+      const status = await getGitStatus(workspacePath);
+      set({ gitStatus: status });
+    } catch (e) {
+      set({ gitStatus: undefined });
+    }
+  },
+  setPendingChange: (pendingChange) => set({ pendingChange }),
+  setInlineCompletionsEnabled: (inlineCompletionsEnabled) => set({ inlineCompletionsEnabled }),
+  setActivePersona: (activePersona) => set({ activePersona })
 }));
 
 export function deriveSettingsFromStore(state: AppState): AppSettings {
