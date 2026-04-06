@@ -1,4 +1,4 @@
-import Editor, { loader } from '@monaco-editor/react';
+import Editor from '@monaco-editor/react';
 import type { OpenFile } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { chatWithProvider } from '@/lib/tauri';
@@ -9,7 +9,7 @@ export function EditorShell() {
   const completionProviderRef = useRef<any>(null);
   const activeFile = openFiles.find((file: OpenFile) => file.path === activeFilePath) ?? openFiles[0];
 
-  const handleEditorMount = (editor: any, monaco: any) => {
+  const handleEditorMount = (_editor: any, monaco: any) => {
     if (completionProviderRef.current) {
        completionProviderRef.current.dispose();
     }
