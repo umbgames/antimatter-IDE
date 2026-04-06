@@ -6,6 +6,7 @@ export interface AgentRunContext {
   provider?: ProviderConfig;
   messages: AgentMessage[];
   workspacePath?: string;
+  createChat?: (request: { model: string; messages: { role: string; content: string }[] }, config: ProviderConfig) => Promise<string>;
 }
 
 export interface AgentRunResult {
@@ -69,16 +70,23 @@ export async function runAgentLoop(
   });
 
   try {
-    const response = await providerRegistry[provider.kind].createChat(
-      {
-        model: provider.model,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          ...currentMessages.map(m => ({ role: m.role as any, content: m.content }))
-        ]
-      },
-      provider
-    );
+    const chatMessages = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...currentMessages.map(m => ({ role: m.role as any, content: m.content }))
+    ];
+
+    let response: string;
+    if (context.createChat) {
+      response = await context.createChat(
+        { model: provider.model, messages: chatMessages },
+        provider
+      );
+    } else {
+      response = await providerRegistry[provider.kind].createChat(
+        { model: provider.model, messages: chatMessages },
+        provider
+      );
+    }
 
     // 1. Parse for tool calls
     const toolCallMatch = response.match(/<tool_call id="([^"]+)">([\s\S]*?)<\/tool_call>/);
