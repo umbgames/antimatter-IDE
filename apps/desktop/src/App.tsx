@@ -72,18 +72,23 @@ export function App() {
   useEffect(() => {
     if (workspacePath && workspaceEntries.length > 0) {
        const runIndexing = async () => {
-         const files = workspaceEntries
-           .filter((e: any) => !e.isDirectory && !e.path.includes('.git') && (e.path.endsWith('.ts') || e.path.endsWith('.tsx') || e.path.endsWith('.rs')))
-           .slice(0, 50);
+         try {
+           const files = workspaceEntries
+             .filter((e: any) => !e.isDirectory && !e.path.includes('.git') && (e.path.endsWith('.ts') || e.path.endsWith('.tsx') || e.path.endsWith('.rs')))
+             .slice(0, 50);
 
-         const fileData = await Promise.all(
-           files.map(async (f: any) => ({
-             path: f.path,
-             content: await (await import('./lib/tauri')).readWorkspaceFile(f.path)
-           }))
-         );
-         
-         await codebaseIndexer.index(fileData);
+           const tauri = await import('./lib/tauri');
+           const fileData = await Promise.all(
+             files.map(async (f: any) => ({
+               path: f.path,
+               content: await tauri.readWorkspaceFile(f.path)
+             }))
+           );
+           
+           await codebaseIndexer.index(fileData);
+         } catch (err) {
+           console.error('Indexing failed:', err);
+         }
        };
        runIndexing();
     }
@@ -368,7 +373,7 @@ export function App() {
       <ProviderSettingsModal open={providersOpen} onClose={() => setProvidersOpen(false)} />
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
       <DiffReviewModal />
-      {workspacePath === undefined && <StartupMenu />}
+      {(!workspacePath && workspacePath !== '') && <StartupMenu />}
     </div>
   );
 }
