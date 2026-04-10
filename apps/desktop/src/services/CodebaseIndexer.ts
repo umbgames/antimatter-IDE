@@ -51,6 +51,9 @@ class CodebaseIndexer {
       batch.forEach((chunk, idx) => {
         chunk.embedding = Array.from(embeddings[idx].data);
       });
+
+      // Yield to the main thread between batches to keep UI responsive
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
 
     this.chunks = newChunks;

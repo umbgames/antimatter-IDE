@@ -368,7 +368,7 @@ export function App() {
       <ProviderSettingsModal open={providersOpen} onClose={() => setProvidersOpen(false)} />
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
       <DiffReviewModal />
-      {!workspacePath && <StartupMenu />}
+      {workspacePath === undefined && <StartupMenu />}
     </div>
   );
 }
