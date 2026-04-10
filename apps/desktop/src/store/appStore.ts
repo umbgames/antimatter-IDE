@@ -25,7 +25,7 @@ export interface PaletteItem {
 
 interface AppState {
   theme: ThemeMode;
-  workspacePath?: string;
+  workspacePath: string | null;
   workspaceEntries: WorkspaceEntry[];
   openFiles: OpenFile[];
   activeFilePath?: string;
@@ -72,6 +72,7 @@ interface AppState {
   setInlineCompletionsEnabled: (enabled: boolean) => void;
   activePersona: 'engineer' | 'architect' | 'qa';
   setActivePersona: (persona: 'engineer' | 'architect' | 'qa') => void;
+  setWorkspace: (path: string | null, entries: WorkspaceEntry[]) => void;
 }
 
 export const initialProviders: ProviderConfig[] = providerDefaults.map((provider, index) => ({
@@ -86,6 +87,7 @@ export const initialProviders: ProviderConfig[] = providerDefaults.map((provider
 
 export const useAppStore = create<AppState>((set) => ({
   theme: 'dark',
+  workspacePath: null,
   workspaceEntries: [],
   openFiles: [],
   agentDockSide: 'right',
@@ -114,6 +116,7 @@ export const useAppStore = create<AppState>((set) => ({
   setTheme: (theme) => set({ theme }),
   setWorkspacePath: (workspacePath) => set({ workspacePath }),
   setWorkspaceEntries: (workspaceEntries) => set({ workspaceEntries }),
+  setWorkspace: (workspacePath, workspaceEntries) => set({ workspacePath, workspaceEntries }),
   openFile: (file) =>
     set((state) => {
       const exists = state.openFiles.some((entry) => entry.path === file.path);

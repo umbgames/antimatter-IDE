@@ -4,38 +4,49 @@ import { openFolderPicker, readDirectory, saveRecentProject } from '@/lib/tauri'
 import { FolderOpen, FilePlus, HardDrive } from 'lucide-react';
 
 export function StartupMenu() {
-  const { recentProjects, setWorkspacePath, setWorkspaceEntries, setRecentProjects } = useAppStore();
+  const recentProjects = useAppStore(s => s.recentProjects);
+  const setWorkspace = useAppStore(s => s.setWorkspace);
+  const setRecentProjects = useAppStore(s => s.setRecentProjects);
+  const setWelcomeVisible = useAppStore(s => s.setWelcomeVisible);
 
   const handleOpenFolder = async () => {
-    const path = await openFolderPicker();
-    if (path) {
-      const entries = await readDirectory(path);
-      setWorkspacePath(path);
-      setWorkspaceEntries(entries);
-      await saveRecentProject(path);
-      // Refresh recent projects list
-      const updated = await import('@/lib/tauri').then(m => m.getRecentProjects());
-      setRecentProjects(updated);
+    try {
+      const path = await openFolderPicker();
+      if (path) {
+        // Read directory FIRST
+        const entries = await readDirectory(path);
+        // Batch update workspace state
+        setWorkspace(path, entries);
+        await saveRecentProject(path);
+        
+        // Refresh recent projects list
+        const tauri = await import('@/lib/tauri');
+        const updated = await tauri.getRecentProjects();
+        setRecentProjects(updated);
+      }
+    } catch (error) {
+      console.error('Failed to open folder', error);
     }
   };
 
   const handleRecentClick = async (path: string) => {
     try {
       const entries = await readDirectory(path);
-      setWorkspacePath(path);
-      setWorkspaceEntries(entries);
+      setWorkspace(path, entries);
       await saveRecentProject(path);
     } catch (error) {
       console.error('Failed to open recent project', error);
-      // Optionally remove from list if not found
     }
   };
 
   const handleEmptyWorkspace = () => {
-    setWorkspacePath('');
-    setWorkspaceEntries([]);
-    useAppStore.setState({ welcomeVisible: true });
+    setWorkspace('', []);
+    setWelcomeVisible(true);
   };
+
+  const sortedProjects = [...recentProjects].sort((a, b) => 
+    new Date(b.lastOpenedAt).getTime() - new Date(a.lastOpenedAt).getTime()
+  ).slice(0, 5);
 
   return (
     <div className="overlay startup-overlay">
@@ -57,11 +68,11 @@ export function StartupMenu() {
 
         <div className="startup-recent">
           <h3>Recent Workspaces</h3>
-          {recentProjects.length === 0 ? (
+          {sortedProjects.length === 0 ? (
             <div className="empty-state compact">No recent workspaces found.</div>
           ) : (
             <div className="recent-list">
-              {recentProjects.map((project: RecentProject) => (
+              {sortedProjects.map((project: RecentProject) => (
                 <button 
                   key={project.path} 
                   className="recent-item startup-recent-item"
@@ -69,9 +80,11 @@ export function StartupMenu() {
                 >
                   <div className="recent-item-info" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <HardDrive size={16} className="text-secondary" />
-                    <div>
-                      <strong>{project.name}</strong>
-                      <span style={{ display: 'block' }}>{project.path}</span>
+                    <div style={{ textAlign: 'left' }}>
+                      <strong style={{ display: 'block' }}>{project.name}</strong>
+                      <span style={{ display: 'block', fontSize: '11px', opacity: 0.6, maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {project.path}
+                      </span>
                     </div>
                   </div>
                   <span className="recent-item-date">{new Date(project.lastOpenedAt).toLocaleDateString()}</span>

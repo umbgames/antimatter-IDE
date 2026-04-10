@@ -41,9 +41,9 @@ class CodebaseIndexer {
       }
     }
 
-    // Generate embeddings in batches of 10 to not block the main thread too long
-    for (let i = 0; i < newChunks.length; i += 10) {
-      const batch = newChunks.slice(i, i + 10);
+    // Generate embeddings in batches of 5 to not block the main thread too long
+    for (let i = 0; i < newChunks.length; i += 5) {
+      const batch = newChunks.slice(i, i + 5);
       const embeddings = await Promise.all(
         batch.map(chunk => this.pipeline(chunk.text, { pooling: 'mean', normalize: true }))
       );
@@ -52,7 +52,7 @@ class CodebaseIndexer {
         chunk.embedding = Array.from(embeddings[idx].data);
       });
 
-      // Yield to the main thread between batches to keep UI responsive
+      // Yield to the main thread frequently
       await new Promise(resolve => setTimeout(resolve, 0));
     }
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useCallback, useRef } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { clsx } from 'clsx';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -16,6 +16,7 @@ import { WelcomeScreen } from './components/welcome/WelcomeScreen';
 import { StartupMenu } from './components/layout/StartupMenu';
 import { SearchPanel } from './components/explorer/SearchPanel';
 import { SourceControlPanel } from './components/explorer/SourceControlPanel';
+import { ErrorBoundary } from './components/layout/ErrorBoundary';
 import { codebaseIndexer } from './services/CodebaseIndexer';
 import { runAgentLoop } from '@antimatter/agents';
 import { useAppStore, deriveSettingsFromStore, initialProviders } from './store/appStore';
@@ -28,41 +29,40 @@ import {
 } from './lib/tauri';
 
 export function App() {
-  const {
-    theme,
-    agentDockSide,
-    settingsOpen,
-    providersOpen,
-    commandPaletteOpen,
-    welcomeVisible,
-    openFiles,
-    activeFilePath,
-    workspacePath,
-    providerConfigs,
-    selectedProviderId,
-    messages,
-    bottomPanelOpen,
-    setTheme,
-    setAgentDockSide,
-    setSettingsOpen,
-    setProvidersOpen,
-    setCommandPaletteOpen,
-    setRecentProjects,
-    setProviderConfigs,
-    setSelectedProviderId,
-    registerPaletteItems,
-    appendMessage,
-    appendLogs,
-    setApprovalRequests,
-    saveFileLocallyMarked,
-    toggleBottomPanel,
-    setWelcomeVisible,
-    setPendingChange,
-    workspaceEntries,
-    activePersona
-  } = useAppStore();
+  // Use specific selectors to prevent re-rendering when logs/messages change
+  const theme = useAppStore(s => s.theme);
+  const agentDockSide = useAppStore(s => s.agentDockSide);
+  const settingsOpen = useAppStore(s => s.settingsOpen);
+  const providersOpen = useAppStore(s => s.providersOpen);
+  const commandPaletteOpen = useAppStore(s => s.commandPaletteOpen);
+  const welcomeVisible = useAppStore(s => s.welcomeVisible);
+  const openFiles = useAppStore(s => s.openFiles);
+  const activeFilePath = useAppStore(s => s.activeFilePath);
+  const workspacePath = useAppStore(s => s.workspacePath);
+  const workspaceEntries = useAppStore(s => s.workspaceEntries);
+  const providerConfigs = useAppStore(s => s.providerConfigs);
+  const selectedProviderId = useAppStore(s => s.selectedProviderId);
+  const bottomPanelOpen = useAppStore(s => s.bottomPanelOpen);
+
+  const setTheme = useAppStore(s => s.setTheme);
+  const setAgentDockSide = useAppStore(s => s.setAgentDockSide);
+  const setSettingsOpen = useAppStore(s => s.setSettingsOpen);
+  const setProvidersOpen = useAppStore(s => s.setProvidersOpen);
+  const setCommandPaletteOpen = useAppStore(s => s.setCommandPaletteOpen);
+  const setRecentProjects = useAppStore(s => s.setRecentProjects);
+  const setProviderConfigs = useAppStore(s => s.setProviderConfigs);
+  const setSelectedProviderId = useAppStore(s => s.setSelectedProviderId);
+  const registerPaletteItems = useAppStore(s => s.registerPaletteItems);
+  const appendMessage = useAppStore(s => s.appendMessage);
+  const appendLogs = useAppStore(s => s.appendLogs);
+  const setApprovalRequests = useAppStore(s => s.setApprovalRequests);
+  const saveFileLocallyMarked = useAppStore(s => s.saveFileLocallyMarked);
+  const toggleBottomPanel = useAppStore(s => s.toggleBottomPanel);
+  const setWelcomeVisible = useAppStore(s => s.setWelcomeVisible);
+  const setPendingChange = useAppStore(s => s.setPendingChange);
 
   const [sidebarTab, setSidebarTab] = React.useState<'explorer' | 'search' | 'source'>('explorer');
+  const indexingVersion = useRef(0);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -71,10 +71,16 @@ export function App() {
   // Index workspace for semantic search
   useEffect(() => {
     if (workspacePath && workspaceEntries.length > 0) {
+       const version = ++indexingVersion.current;
        const runIndexing = async () => {
          try {
+           // Small delay to let the UI settle after opening a workspace
+           await new Promise(r => setTimeout(r, 1000));
+           if (version !== indexingVersion.current) return;
+
            const files = workspaceEntries
-             .filter((e: any) => !e.isDirectory && !e.path.includes('.git') && (e.path.endsWith('.ts') || e.path.endsWith('.tsx') || e.path.endsWith('.rs')))
+             .filter((e: any) => !e.isDirectory && !e.path.includes('.git') && 
+               (e.path.endsWith('.ts') || e.path.endsWith('.tsx') || e.path.endsWith('.rs') || e.path.endsWith('.js') || e.path.endsWith('.py')))
              .slice(0, 50);
 
            const tauri = await import('./lib/tauri');
@@ -85,7 +91,9 @@ export function App() {
              }))
            );
            
-           await codebaseIndexer.index(fileData);
+           if (version === indexingVersion.current) {
+             await codebaseIndexer.index(fileData);
+           }
          } catch (err) {
            console.error('Indexing failed:', err);
          }
@@ -117,17 +125,20 @@ export function App() {
       .catch(() => undefined);
   }, [setAgentDockSide, setProviderConfigs, setRecentProjects, setSelectedProviderId, setTheme]);
 
-  const selectedProvider = providerConfigs.find((provider) => provider.id === selectedProviderId);
+  const selectedProvider = useMemo(() => 
+    providerConfigs.find((provider) => provider.id === selectedProviderId),
+    [providerConfigs, selectedProviderId]
+  );
 
   /* ─── File Actions ─── */
-  const saveActiveFile = async () => {
+  const saveActiveFile = useCallback(async () => {
     const file = openFiles.find((entry) => entry.path === activeFilePath);
     if (!file) return;
     await writeWorkspaceFile(file.path, file.content);
     saveFileLocallyMarked(file.path);
-  };
+  }, [activeFilePath, openFiles, saveFileLocallyMarked]);
 
-  const closeActiveFile = () => {
+  const closeActiveFile = useCallback(() => {
     const state = useAppStore.getState();
     const files = state.openFiles;
     const activePath = state.activeFilePath;
@@ -142,17 +153,17 @@ export function App() {
       activeFilePath: nextActive,
       welcomeVisible: remaining.length === 0
     });
-  };
+  }, []);
 
-  const closeAllFiles = () => {
+  const closeAllFiles = useCallback(() => {
     useAppStore.setState({
       openFiles: [],
       activeFilePath: undefined,
       welcomeVisible: true
     });
-  };
+  }, []);
 
-  const newFile = () => {
+  const newFile = useCallback(() => {
     const id = crypto.randomUUID().slice(0, 8);
     const file = {
       path: `untitled-${id}`,
@@ -162,16 +173,15 @@ export function App() {
       dirty: true
     };
     useAppStore.getState().openFile(file);
-  };
+  }, []);
 
-  const openFolder = () => {
-    // Focus the explorer path input — the FileExplorer handles the actual folder loading
+  const openFolder = useCallback(() => {
     const input = document.querySelector('.explorer-pathbar input') as HTMLInputElement | null;
     if (input) {
       input.focus();
       input.select();
     }
-  };
+  }, []);
 
   /* ─── Keyboard Shortcuts ─── */
   useKeyboardShortcuts({
@@ -197,7 +207,7 @@ export function App() {
       { id: 'toggle-terminal', title: `View: ${bottomPanelOpen ? 'Hide' : 'Show'} Terminal`, category: 'View', action: toggleBottomPanel },
       { id: 'welcome', title: 'Help: Show Welcome', category: 'Help', action: () => setWelcomeVisible(true) }
     ],
-    [setAgentDockSide, setProvidersOpen, setSettingsOpen, setTheme, theme, bottomPanelOpen, toggleBottomPanel, setWelcomeVisible]
+    [setAgentDockSide, setProvidersOpen, setSettingsOpen, setTheme, theme, bottomPanelOpen, toggleBottomPanel, setWelcomeVisible, newFile, saveActiveFile, closeActiveFile]
   );
 
   useEffect(() => {
@@ -205,7 +215,7 @@ export function App() {
   }, [paletteItems, registerPaletteItems]);
 
   /* ─── Agent ─── */
-  const onAgentPrompt = async (prompt: string) => {
+  const onAgentPrompt = useCallback(async (prompt: string) => {
     const now = new Date().toISOString();
     const userMessage = {
       id: crypto.randomUUID(),
@@ -229,11 +239,12 @@ export function App() {
     appendLogs(plannedLogs);
     setApprovalRequests([]);
 
+    const state = useAppStore.getState();
     const context = {
       provider: selectedProvider,
-      messages: [...messages, userMessage],
-      workspacePath: workspacePath || undefined,
-      persona: activePersona,
+      messages: [...state.messages],
+      workspacePath: state.workspacePath || undefined,
+      persona: state.activePersona,
       createChat: async (request: any, config: any) => {
         const tauri = await import('./lib/tauri');
         return await tauri.chatWithProvider(config.id, request.messages);
@@ -241,25 +252,23 @@ export function App() {
     };
 
     const result = await runAgentLoop(context, async (toolId, args) => {
-      // Dynamic imports to keep App.tsx clean and avoid circularity
       const tauri = await import('./lib/tauri');
+      const currentPath = useAppStore.getState().workspacePath;
       
       switch (toolId) {
         case 'read-file':
           return await tauri.readWorkspaceFile(args.path);
         case 'write-file':
         case 'patch-file':
-          // Approvals are handled by the agent loop return, but we need to return something here
-          // if it's a read-only request for the diffing
           return await tauri.readWorkspaceFile(args.path);
         case 'search-workspace':
-          if (!workspacePath) throw new Error('No workspace open');
-          return await tauri.searchWorkspace(workspacePath, args.query);
+          if (!currentPath) throw new Error('No workspace open');
+          return await tauri.searchWorkspace(currentPath, args.query);
         case 'query-codebase':
           return await codebaseIndexer.search(args.query);
         case 'terminal-exec':
-          if (!workspacePath) throw new Error('No workspace open');
-          return await tauri.executeTerminal({ cwd: workspacePath, command: args.command });
+          if (!currentPath) throw new Error('No workspace open');
+          return await tauri.executeTerminal({ cwd: currentPath, command: args.command });
         default:
           throw new Error(`Tool ${toolId} not implemented in runtime.`);
       }
@@ -269,21 +278,20 @@ export function App() {
     setApprovalRequests(result.approvalRequests);
     appendMessage(result.reply);
 
-    // If there's a diff in the FIRST approval request (standard workflow), surface it immediately
     const firstWithDiff = result.approvalRequests.find(r => r.diff);
     if (firstWithDiff?.diff) {
       setPendingChange(firstWithDiff.diff);
     }
-  };
+  }, [selectedProvider, appendMessage, appendLogs, setApprovalRequests, setPendingChange]);
 
   /* ─── Persist Settings ─── */
-  const persistSettings = async () => {
+  const persistSettings = useCallback(async () => {
     await saveSettings(deriveSettingsFromStore(useAppStore.getState()));
-  };
+  }, []);
 
   useEffect(() => {
     void persistSettings();
-  }, [theme, agentDockSide]);
+  }, [theme, agentDockSide, persistSettings]);
 
   /* ─── Render ─── */
   return (
@@ -308,7 +316,9 @@ export function App() {
           {agentDockSide === 'left' && (
             <>
               <Panel defaultSize={22} minSize={16}>
-                <AgentPanel onSubmit={onAgentPrompt} />
+                <ErrorBoundary>
+                   <AgentPanel onSubmit={onAgentPrompt} />
+                </ErrorBoundary>
               </Panel>
               <PanelResizeHandle className="resize-handle vertical" />
             </>
@@ -316,41 +326,38 @@ export function App() {
 
           <Panel defaultSize={18} minSize={12}>
             <div className="sidebar-tabs">
-              <button 
-                className={clsx('sidebar-tab', { active: sidebarTab === 'explorer' })}
-                onClick={() => setSidebarTab('explorer')}
-              >
-                Explorer
-              </button>
-              <button 
-                className={clsx('sidebar-tab', { active: sidebarTab === 'search' })}
-                onClick={() => setSidebarTab('search')}
-              >
-                Search
-              </button>
-              <button 
-                className={clsx('sidebar-tab', { active: sidebarTab === 'source' })}
-                onClick={() => setSidebarTab('source')}
-              >
-                Source
-              </button>
+              {(['explorer', 'search', 'source'] as const).map(tab => (
+                 <button 
+                   key={tab}
+                   className={clsx('sidebar-tab', { active: sidebarTab === tab })}
+                   onClick={() => setSidebarTab(tab)}
+                 >
+                   {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                 </button>
+              ))}
             </div>
-            {sidebarTab === 'explorer' && <FileExplorer />}
-            {sidebarTab === 'search' && <SearchPanel />}
-            {sidebarTab === 'source' && <SourceControlPanel />}
+            <ErrorBoundary>
+               {sidebarTab === 'explorer' && <FileExplorer />}
+               {sidebarTab === 'search' && <SearchPanel />}
+               {sidebarTab === 'source' && <SourceControlPanel />}
+            </ErrorBoundary>
           </Panel>
           <PanelResizeHandle className="resize-handle vertical" />
 
           <Panel>
             <PanelGroup autoSaveId="antimatter-center-layout" direction="vertical">
               <Panel>
-                {welcomeVisible && openFiles.length === 0 ? <WelcomeScreen /> : <EditorShell />}
+                <ErrorBoundary>
+                   {welcomeVisible && openFiles.length === 0 ? <WelcomeScreen /> : <EditorShell />}
+                </ErrorBoundary>
               </Panel>
               {bottomPanelOpen && (
                 <>
                   <PanelResizeHandle className="resize-handle horizontal" />
                   <Panel defaultSize={24} minSize={14} collapsible>
-                    <BottomPanel />
+                    <ErrorBoundary>
+                       <BottomPanel />
+                    </ErrorBoundary>
                   </Panel>
                 </>
               )}
@@ -361,7 +368,9 @@ export function App() {
             <>
               <PanelResizeHandle className="resize-handle vertical" />
               <Panel defaultSize={24} minSize={16}>
-                <AgentPanel onSubmit={onAgentPrompt} />
+                <ErrorBoundary>
+                   <AgentPanel onSubmit={onAgentPrompt} />
+                </ErrorBoundary>
               </Panel>
             </>
           )}
@@ -373,7 +382,7 @@ export function App() {
       <ProviderSettingsModal open={providersOpen} onClose={() => setProvidersOpen(false)} />
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
       <DiffReviewModal />
-      {(!workspacePath && workspacePath !== '') && <StartupMenu />}
+      {workspacePath === null && <StartupMenu />}
     </div>
   );
 }
