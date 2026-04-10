@@ -312,7 +312,7 @@ export function App() {
       />
 
       <div className="workspace-shell">
-        <PanelGroup autoSaveId="antimatter-root-layout" direction="horizontal">
+        <PanelGroup direction="horizontal">
           {agentDockSide === 'left' && (
             <>
               <Panel defaultSize={22} minSize={16}>
@@ -345,7 +345,7 @@ export function App() {
           <PanelResizeHandle className="resize-handle vertical" />
 
           <Panel>
-            <PanelGroup autoSaveId="antimatter-center-layout" direction="vertical">
+            <PanelGroup direction="vertical">
               <Panel>
                 <ErrorBoundary>
                    {welcomeVisible && openFiles.length === 0 ? <WelcomeScreen /> : <EditorShell />}
