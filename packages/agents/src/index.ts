@@ -203,9 +203,10 @@ export async function runAgentLoop(
       break;
 
     } catch (err: any) {
+      const errorDetail = err.message || String(err);
       return {
-        reply: { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${err.message}`, createdAt: new Date().toISOString() },
-        logs: [...logs, { id: crypto.randomUUID(), kind: 'error', title: 'Provider error', detail: err.message, createdAt: new Date().toISOString() }],
+        reply: { id: crypto.randomUUID(), role: 'assistant', content: `Error: ${errorDetail}`, createdAt: new Date().toISOString() },
+        logs: [...logs, { id: crypto.randomUUID(), kind: 'error', title: 'Provider error', detail: errorDetail, createdAt: new Date().toISOString() }],
         approvalRequests: []
       };
     }
