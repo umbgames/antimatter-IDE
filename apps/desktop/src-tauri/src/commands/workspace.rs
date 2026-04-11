@@ -1,5 +1,5 @@
 use crate::models::{SearchResult, TerminalRequest, TerminalResponse, WorkspaceEntry, GitStatus, GitFile};
-use std::{fs, path::PathBuf, process::Command, str};
+use std::{fs, path::PathBuf, process::Command};
 use walkdir::WalkDir;
 
 #[tauri::command]

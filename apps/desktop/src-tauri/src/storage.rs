@@ -63,7 +63,7 @@ pub fn save_provider(config: &ProviderConfig, api_key: Option<String>) -> Result
     if let Some(secret) = api_key {
         let entry = Entry::new(KEYRING_SERVICE, &config.id).map_err(|err| format!("Keyring init: {}", err))?;
         // Force delete first to avoid attribute mismatch on some OS versions
-        let _ = entry.delete_password(); 
+        let _ = entry.delete_credential(); 
         entry.set_password(&secret).map_err(|err| format!("Keyring save: {}", err))?;
     }
 
