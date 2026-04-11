@@ -61,16 +61,22 @@ pub fn save_provider(config: &ProviderConfig, api_key: Option<String>) -> Result
     }
 
     if let Some(secret) = api_key {
-        let entry = Entry::new(KEYRING_SERVICE, &config.id).map_err(|err| err.to_string())?;
-        entry.set_password(&secret).map_err(|err| err.to_string())?;
+        let entry = Entry::new(KEYRING_SERVICE, &config.id).map_err(|err| format!("Keyring init: {}", err))?;
+        // Force delete first to avoid attribute mismatch on some OS versions
+        let _ = entry.delete_password(); 
+        entry.set_password(&secret).map_err(|err| format!("Keyring save: {}", err))?;
     }
 
     write_json(PROVIDERS_FILE, &providers)
 }
 
-pub fn get_provider_secret(provider_id: &str) -> Option<String> {
-    let entry = Entry::new(KEYRING_SERVICE, provider_id).ok()?;
-    entry.get_password().ok()
+pub fn get_provider_secret(provider_id: &str) -> Result<Option<String>, String> {
+    let entry = Entry::new(KEYRING_SERVICE, provider_id).map_err(|err| format!("Keyring init: {}", err))?;
+    match entry.get_password() {
+        Ok(pass) => Ok(Some(pass)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(err) => Err(format!("Keyring retrieval: {}", err)),
+    }
 }
 
 pub fn get_recent_projects() -> Vec<RecentProject> {

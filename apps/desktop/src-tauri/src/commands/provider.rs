@@ -17,7 +17,7 @@ pub fn save_provider(config: ProviderConfig, api_key: Option<String>) -> Result<
 
 #[tauri::command]
 pub async fn test_provider_connection(config: ProviderConfig, api_key: Option<String>) -> ProviderTestResult {
-    let has_secret = api_key.is_some() || storage::get_provider_secret(&config.id).is_some() || config.api_key_stored;
+    let has_secret = api_key.is_some() || storage::get_provider_secret(&config.id).map(|s| s.is_some()).unwrap_or(false) || config.api_key_stored;
     if !has_secret && config.kind != "local" {
         return ProviderTestResult {
             ok: false,
@@ -68,9 +68,11 @@ async fn test_openai_compatible_connection(
     let mut request = client.get(url).header(header::CONTENT_TYPE, "application/json");
 
     if config.kind != "local" {
-        let secret = api_key
-            .or_else(|| storage::get_provider_secret(&config.id))
-            .ok_or_else(|| format!("No API key is stored for '{}' yet. Save one first, then test again.", config.label))?;
+        let secret = match api_key {
+            Some(key) => key,
+            None => storage::get_provider_secret(&config.id)?
+                .ok_or_else(|| format!("No API key is stored for '{}' yet. Save one first, then test again.", config.label))?
+        };
         request = request.bearer_auth(secret);
     }
 
@@ -112,7 +114,7 @@ async fn send_openai_compatible_chat(
         }));
 
     if config.kind != "local" {
-        let secret = storage::get_provider_secret(&config.id)
+        let secret = storage::get_provider_secret(&config.id)?
             .ok_or_else(|| format!("No API key is stored for '{}' yet. Save one in Settings → Providers before running the agent.", config.label))?;
         request = request.bearer_auth(secret);
     }
