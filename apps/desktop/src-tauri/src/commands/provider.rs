@@ -16,19 +16,19 @@ pub fn save_provider(config: ProviderConfig, api_key: Option<String>) -> Result<
 }
 
 #[tauri::command]
-pub async fn test_provider_connection(config: ProviderConfig) -> ProviderTestResult {
-    let has_secret = storage::get_provider_secret(&config.id).is_some() || config.api_key_stored;
+pub async fn test_provider_connection(config: ProviderConfig, api_key: Option<String>) -> ProviderTestResult {
+    let has_secret = api_key.is_some() || storage::get_provider_secret(&config.id).is_some() || config.api_key_stored;
     if !has_secret && config.kind != "local" {
         return ProviderTestResult {
             ok: false,
-            message: "No API key is stored for this provider yet. Save one first, then test again.".into(),
+            message: format!("No API key is stored for '{}' yet. Save one in Settings → Providers first, or enter one in the API key field to test it.", config.label),
         };
     }
 
     let client = Client::new();
     let result = match config.kind.as_str() {
         "groq" | "openai" | "openai-compatible" | "local" => {
-            test_openai_compatible_connection(&client, &config).await
+            test_openai_compatible_connection(&client, &config, api_key).await
         }
         "anthropic" => Ok("Anthropic is configured. Live HTTP transport is not wired in this starter yet.".into()),
         "gemini" => Ok("Gemini is configured. Live HTTP transport is not wired in this starter yet.".into()),
@@ -46,7 +46,7 @@ pub async fn chat_with_provider(provider_id: String, messages: Vec<ChatMessage>)
     let config = storage::load_providers()
         .into_iter()
         .find(|entry| entry.id == provider_id)
-        .ok_or_else(|| "Provider not found. Save it in Settings → Providers first.".to_string())?;
+        .ok_or_else(|| format!("Provider '{}' (ID: {}) not found. Save it in Settings → Providers first.", provider_id, provider_id))?;
 
     match config.kind.as_str() {
         "groq" | "openai" | "openai-compatible" | "local" => {
@@ -59,13 +59,18 @@ pub async fn chat_with_provider(provider_id: String, messages: Vec<ChatMessage>)
     }
 }
 
-async fn test_openai_compatible_connection(client: &Client, config: &ProviderConfig) -> Result<String, String> {
+async fn test_openai_compatible_connection(
+    client: &Client, 
+    config: &ProviderConfig,
+    api_key: Option<String>
+) -> Result<String, String> {
     let url = format!("{}/models", normalized_base_url(config)?);
     let mut request = client.get(url).header(header::CONTENT_TYPE, "application/json");
 
     if config.kind != "local" {
-        let secret = storage::get_provider_secret(&config.id)
-            .ok_or_else(|| "No API key is stored for this provider yet. Save one first, then test again.".to_string())?;
+        let secret = api_key
+            .or_else(|| storage::get_provider_secret(&config.id))
+            .ok_or_else(|| format!("No API key is stored for '{}' yet. Save one first, then test again.", config.label))?;
         request = request.bearer_auth(secret);
     }
 
@@ -108,7 +113,7 @@ async fn send_openai_compatible_chat(
 
     if config.kind != "local" {
         let secret = storage::get_provider_secret(&config.id)
-            .ok_or_else(|| "No API key is stored for this provider yet. Save one in Settings → Providers before running the agent.".to_string())?;
+            .ok_or_else(|| format!("No API key is stored for '{}' yet. Save one in Settings → Providers before running the agent.", config.label))?;
         request = request.bearer_auth(secret);
     }
 
