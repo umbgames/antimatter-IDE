@@ -42,11 +42,11 @@ export function BottomPanel() {
         cmd.on('close', () => { term.writeln('\r\nConsole closed.'); });
         cmd.on('error', err => { term.writeln('\r\n\x1B[31mConsole error: ' + err + '\x1B[0m'); });
         
-        // Correct event names for Tauri v2 Shell plugin
-        cmd.on('stdout', (line) => {
+        // Correct event patterns for Tauri v2 Shell plugin
+        cmd.stdout.on('data', (line) => {
           term.write(line);
         });
-        cmd.on('stderr', (line) => {
+        cmd.stderr.on('data', (line) => {
           term.write(`\x1B[31m${line}\x1B[0m`);
         });
 
