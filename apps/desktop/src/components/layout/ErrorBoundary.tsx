@@ -8,6 +8,7 @@ interface Props {
 interface State {
   hasError: boolean;
   error?: Error;
+  errorInfo?: ErrorInfo;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -21,6 +22,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error in Antimatter UI:', error, errorInfo);
+    this.setState({ errorInfo });
   }
 
   public render() {
@@ -33,8 +35,17 @@ export class ErrorBoundary extends Component<Props, State> {
             <p style={{ opacity: 0.7, marginBottom: '24px', fontSize: '13px' }}>
               Something went wrong while rendering the application shell. This might be due to a layout calculation failure or state corruption.
             </p>
-            <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '4px', textAlign: 'left', marginBottom: '24px', fontSize: '11px', fontFamily: 'monospace', overflow: 'auto', maxHeight: '100px', border: '1px solid rgba(255,255,255,0.1)' }}>
-              {this.state.error?.message}
+            <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '4px', textAlign: 'left', marginBottom: '24px', fontSize: '11px', fontFamily: 'monospace', overflow: 'auto', maxHeight: '200px', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <div style={{ color: '#ff6b6b', fontWeight: 'bold', marginBottom: '8px' }}>{this.state.error?.name}: {this.state.error?.message}</div>
+              {this.state.error?.stack && (
+                <div style={{ margin: '8px 0', padding: '8px', background: 'rgba(255,100,100,0.1)', borderLeft: '3px solid #ff6b6b', whiteSpace: 'pre-wrap', color: '#ff8a8a' }}>
+                  {this.state.error.stack}
+                </div>
+              )}
+              <div style={{ whiteSpace: 'pre-wrap', opacity: 0.8, marginTop: '8px' }}>
+                <strong>Component Stack:</strong>
+                {this.state.errorInfo?.componentStack}
+              </div>
             </div>
             <button 
               className="button primary large" 
