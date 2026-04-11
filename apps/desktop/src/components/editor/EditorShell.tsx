@@ -10,6 +10,24 @@ export function EditorShell() {
   const activeFile = openFiles.find((file: OpenFile) => file.path === activeFilePath) ?? openFiles[0];
 
   const handleEditorMount = (_editor: any, monaco: any) => {
+    monaco.editor.defineTheme('antimatter-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [],
+      colors: {
+        'editor.background': '#13141a',
+      }
+    });
+
+    monaco.editor.defineTheme('antimatter-light', {
+      base: 'vs',
+      inherit: true,
+      rules: [],
+      colors: {
+        'editor.background': '#ffffff',
+      }
+    });
+
     if (completionProviderRef.current) {
        completionProviderRef.current.dispose();
     }
@@ -78,7 +96,7 @@ export function EditorShell() {
           height="100%"
           language={activeFile.language}
           value={activeFile.content}
-          theme={theme === 'dark' ? 'vs-dark' : 'light'}
+          theme={theme === 'dark' ? 'antimatter-dark' : 'antimatter-light'}
           onChange={(value) => updateOpenFileContent(activeFile.path, value ?? '')}
           onMount={handleEditorMount}
           options={{
