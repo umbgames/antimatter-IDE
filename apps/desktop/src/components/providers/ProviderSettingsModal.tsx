@@ -48,7 +48,7 @@ export function ProviderSettingsModal({ open, onClose }: Props) {
   };
 
   const handleTest = async () => {
-    const result = await testProviderConnection(draft);
+    const result = await testProviderConnection(draft, apiKey || undefined);
     setFeedback(result.message);
     setDraft((current) => ({ ...current, status: result.ok ? 'connected' : 'failed' }));
   };

@@ -53,8 +53,8 @@ export async function saveProvider(config: ProviderConfig, apiKey?: string): Pro
   return invoke('save_provider', { config, apiKey });
 }
 
-export async function testProviderConnection(config: ProviderConfig): Promise<ProviderTestResult> {
-  return invoke('test_provider_connection', { config });
+export async function testProviderConnection(config: ProviderConfig, apiKey?: string): Promise<ProviderTestResult> {
+  return invoke('test_provider_connection', { config, apiKey });
 }
 
 export async function executeTerminal(request: TerminalRequest): Promise<TerminalResponse> {
