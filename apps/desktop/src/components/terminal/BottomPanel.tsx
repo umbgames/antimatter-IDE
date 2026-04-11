@@ -34,8 +34,7 @@ export function BottomPanel() {
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    let unlistenStdout: any = null;
-    let unlistenStderr: any = null;
+
 
     const startShell = async () => {
       try {
@@ -43,19 +42,20 @@ export function BottomPanel() {
         cmd.on('close', () => { term.writeln('\r\nConsole closed.'); });
         cmd.on('error', err => { term.writeln('\r\n\x1B[31mConsole error: ' + err + '\x1B[0m'); });
         
+        // Correct event names for Tauri v2 Shell plugin
+        cmd.on('stdout', (line) => {
+          term.write(line);
+        });
+        cmd.on('stderr', (line) => {
+          term.write(`\x1B[31m${line}\x1B[0m`);
+        });
+
         const child = await cmd.spawn();
         childRef.current = child;
 
         // Route keystrokes properly
         term.onData((data) => {
           child.write(data);
-        });
-
-        unlistenStdout = await cmd.stdout.on('data', (line) => {
-          term.write(line);
-        });
-        unlistenStderr = await cmd.stderr.on('data', (line) => {
-          term.write(`\x1B[31m${line}\x1B[0m`);
         });
 
       } catch (e: any) {
@@ -75,8 +75,6 @@ export function BottomPanel() {
       if (childRef.current) {
          childRef.current.kill().catch(() => {});
       }
-      if (unlistenStdout) unlistenStdout();
-      if (unlistenStderr) unlistenStderr();
       term.dispose();
       xtermRef.current = null;
     };
