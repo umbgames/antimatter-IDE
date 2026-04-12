@@ -1,12 +1,10 @@
 use crate::models::{AppSettings, ProviderConfig, RecentProject};
-use keyring::Entry;
 use std::{fs, path::PathBuf};
 
 const APP_DIR: &str = "antimatter";
 const SETTINGS_FILE: &str = "settings.json";
 const PROVIDERS_FILE: &str = "providers.json";
 const RECENTS_FILE: &str = "recent_projects.json";
-const KEYRING_SERVICE: &str = "Antimatter";
 
 fn app_config_dir() -> PathBuf {
     let base = std::env::var("HOME")
@@ -54,29 +52,29 @@ pub fn load_providers() -> Vec<ProviderConfig> {
 
 pub fn save_provider(config: &ProviderConfig, api_key: Option<String>) -> Result<(), String> {
     let mut providers = load_providers();
-    if let Some(index) = providers.iter().position(|entry| entry.id == config.id) {
-        providers[index] = config.clone();
-    } else {
-        providers.push(config.clone());
+    let mut updated_config = config.clone();
+    
+    if let Some(secret) = api_key {
+        updated_config.api_key = Some(secret);
+        updated_config.api_key_stored = true;
     }
 
-    if let Some(secret) = api_key {
-        let entry = Entry::new(KEYRING_SERVICE, &config.id).map_err(|err| format!("Keyring init: {}", err))?;
-        // Force delete first to avoid attribute mismatch on some OS versions
-        let _ = entry.delete_credential(); 
-        entry.set_password(&secret).map_err(|err| format!("Keyring save: {}", err))?;
+    if let Some(index) = providers.iter().position(|entry| entry.id == config.id) {
+        providers[index] = updated_config;
+    } else {
+        providers.push(updated_config);
     }
 
     write_json(PROVIDERS_FILE, &providers)
 }
 
 pub fn get_provider_secret(provider_id: &str) -> Result<Option<String>, String> {
-    let entry = Entry::new(KEYRING_SERVICE, provider_id).map_err(|err| format!("Keyring init: {}", err))?;
-    match entry.get_password() {
-        Ok(pass) => Ok(Some(pass)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(err) => Err(format!("Keyring retrieval: {}", err)),
-    }
+    let providers = load_providers();
+    let secret = providers.iter()
+        .find(|p| p.id == provider_id)
+        .and_then(|p| p.api_key.clone());
+    
+    Ok(secret)
 }
 
 pub fn get_recent_projects() -> Vec<RecentProject> {

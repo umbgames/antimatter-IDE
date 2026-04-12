@@ -25,6 +25,7 @@ pub struct ProviderConfig {
     pub base_url: Option<String>,
     pub model: String,
     pub api_key_stored: bool,
+    pub api_key: Option<String>,
     pub status: String,
     pub notes: Option<String>,
 }
