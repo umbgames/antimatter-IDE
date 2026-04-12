@@ -39,11 +39,15 @@ export function ProviderSettingsModal({ open, onClose }: Props) {
   };
 
   const handleSave = async () => {
-    const next = { ...draft, apiKeyStored: Boolean(apiKey) || draft.apiKeyStored };
+    const next = { 
+      ...draft, 
+      apiKey: apiKey || draft.apiKey,
+      apiKeyStored: Boolean(apiKey) || draft.apiKeyStored 
+    };
     await saveProvider(next, apiKey || undefined);
     upsertProviderConfig(next);
     setSelectedProviderId(next.id);
-    setFeedback('Provider saved locally. Antimatter does not store bundled credentials.');
+    setFeedback('Provider saved to app configuration.');
     setApiKey('');
   };
 
@@ -69,7 +73,15 @@ export function ProviderSettingsModal({ open, onClose }: Props) {
         <div className="provider-layout">
           <div className="provider-list">
             {providerConfigs.map((provider: ProviderConfig) => (
-              <button key={provider.id} className="provider-card" onClick={() => setDraft(provider)}>
+              <button 
+                key={provider.id} 
+                className={`provider-card ${draft.id === provider.id ? 'active' : ''}`} 
+                onClick={() => {
+                  setDraft(provider);
+                  setApiKey(provider.apiKey ?? '');
+                  setFeedback('');
+                }}
+              >
                 <strong>{provider.label}</strong>
                 <span>{provider.kind}</span>
                 <span>Status: {provider.status}</span>
@@ -134,6 +146,9 @@ export function ProviderSettingsModal({ open, onClose }: Props) {
             </div>
 
             <div className="helper-text">{feedback}</div>
+            <div className="helper-text secondary">
+              Keys are stored in your local app directory. This is not encrypted, but it ensures high reliability for local development.
+            </div>
             {draft.kind === 'groq' && (
               <div className="helper-text">
                 Groq provides ultra-fast inference, but model quality, speed, and availability still depend on Groq's infrastructure and the model you select.
