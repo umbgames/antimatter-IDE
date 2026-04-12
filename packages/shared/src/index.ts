@@ -37,6 +37,7 @@ export interface ProviderConfig {
   model: string;
   apiKeyStored: boolean;
   status: 'unknown' | 'connected' | 'failed';
+  apiKey?: string;
   notes?: string;
 }
 
