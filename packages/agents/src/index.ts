@@ -113,7 +113,10 @@ export async function runAgentLoop(
         const toolId = toolCallMatch[1];
         const toolArgsRaw = toolCallMatch[2];
         let toolArgs: any = {};
-        try { toolArgs = JSON.parse(toolArgsRaw); } catch (e) { /* ignore parse error */ }
+        try { 
+          const cleaned = toolArgsRaw.replace(/```json/g, "").replace(/```/g, "").trim();
+          toolArgs = JSON.parse(cleaned); 
+        } catch (e) { /* ignore parse error */ }
 
         const tool = builtInTools.find(t => t.id === toolId);
         
@@ -166,7 +169,8 @@ export async function runAgentLoop(
                 title: `Approve ${tool.label}`,
                 description: `Agent wants to ${tool.description.toLowerCase()}`,
                 risk: tool.risk === 'guarded' ? 'high' : 'medium',
-                diff: diffPayload
+                diff: diffPayload,
+                toolCall: { toolId, args: toolArgs }
               }]
             };
           }

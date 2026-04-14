@@ -73,6 +73,7 @@ export interface ApprovalRequest {
   description: string;
   risk: 'low' | 'medium' | 'high';
   diff?: DiffPreview;
+  toolCall?: { toolId: string; args: any };
 }
 
 export interface AppSettings {
