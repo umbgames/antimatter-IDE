@@ -7,9 +7,11 @@ import { clsx } from 'clsx';
 
 interface Props {
   onSubmit: (prompt: string) => Promise<void>;
+  onApprove: (request: ApprovalRequest) => Promise<void>;
+  onReject: (request: ApprovalRequest) => void;
 }
 
-export function AgentPanel({ onSubmit }: Props) {
+export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
   const { messages, actionLogs, approvalRequests, providerConfigs, selectedProviderId, setSelectedProviderId, activePersona, setActivePersona } = useAppStore();
   const [prompt, setPrompt] = useState('');
 
@@ -84,7 +86,7 @@ export function AgentPanel({ onSubmit }: Props) {
           <div className="agent-section">
             <strong>Approvals</strong>
             {approvalRequests.map((request: ApprovalRequest) => (
-              <DiffPreviewCard key={request.id} request={request} />
+              <DiffPreviewCard key={request.id} request={request} onApprove={onApprove} onReject={onReject} />
             ))}
           </div>
         )}

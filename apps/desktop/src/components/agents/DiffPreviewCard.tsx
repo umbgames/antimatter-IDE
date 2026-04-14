@@ -2,9 +2,11 @@ import type { ApprovalRequest } from '@antimatter/shared';
 
 interface Props {
   request: ApprovalRequest;
+  onApprove: (request: ApprovalRequest) => void;
+  onReject: (request: ApprovalRequest) => void;
 }
 
-export function DiffPreviewCard({ request }: Props) {
+export function DiffPreviewCard({ request, onApprove, onReject }: Props) {
   return (
     <article className="diff-card">
       <header>
@@ -25,8 +27,8 @@ export function DiffPreviewCard({ request }: Props) {
         </div>
       )}
       <div className="diff-actions">
-        <button className="button subtle">Reject</button>
-        <button className="button primary">Approve</button>
+        <button className="button subtle" onClick={() => onReject(request)}>Reject</button>
+        <button className="button primary" onClick={() => onApprove(request)}>Approve</button>
       </div>
     </article>
   );

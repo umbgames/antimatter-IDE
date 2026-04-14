@@ -284,6 +284,37 @@ export function App() {
     }
   }, [selectedProvider, appendMessage, appendLogs, setApprovalRequests, setPendingChange]);
 
+  const onApproveTool = useCallback(async (request: any) => {
+    setApprovalRequests(useAppStore.getState().approvalRequests.filter(r => r.id !== request.id));
+    if (!request.toolCall) return;
+    
+    const tauri = await import('./lib/tauri');
+    const { toolId, args } = request.toolCall;
+    
+    let result;
+    try {
+      if (toolId === 'write-file' || toolId === 'patch-file') {
+        const proposedContent = request.diff?.proposed ?? args.content ?? '';
+        await tauri.writeWorkspaceFile(args.path, proposedContent);
+        result = `Successfully wrote to ${args.path}`;
+      } else if (toolId === 'terminal-exec') {
+        const currentPath = useAppStore.getState().workspacePath;
+        if (!currentPath) throw new Error('No workspace open');
+        result = await tauri.executeTerminal({ cwd: currentPath, command: args.command });
+      } else {
+        result = `Tool ${toolId} executed`;
+      }
+      void onAgentPrompt(`<observation>\n${JSON.stringify(result, null, 2)}\n</observation>`);
+    } catch (err: any) {
+      void onAgentPrompt(`<error>\nTool failed: ${err.message || String(err)}\n</error>`);
+    }
+  }, [setApprovalRequests, onAgentPrompt]);
+
+  const onRejectTool = useCallback((request: any) => {
+    setApprovalRequests(useAppStore.getState().approvalRequests.filter(r => r.id !== request.id));
+    void onAgentPrompt(`<error>\nUser rejected the tool execution.\n</error>`);
+  }, [setApprovalRequests, onAgentPrompt]);
+
   /* ─── Persist Settings ─── */
   const persistSettings = useCallback(async () => {
     await saveSettings(deriveSettingsFromStore(useAppStore.getState()));
@@ -317,7 +348,7 @@ export function App() {
             <>
               <Panel defaultSize={22} minSize={16}>
                 <ErrorBoundary>
-                   <AgentPanel onSubmit={onAgentPrompt} />
+                   <AgentPanel onSubmit={onAgentPrompt} onApprove={onApproveTool} onReject={onRejectTool} />
                 </ErrorBoundary>
               </Panel>
               <PanelResizeHandle className="resize-handle vertical" />
@@ -369,7 +400,7 @@ export function App() {
               <PanelResizeHandle className="resize-handle vertical" />
               <Panel defaultSize={24} minSize={16}>
                 <ErrorBoundary>
-                   <AgentPanel onSubmit={onAgentPrompt} />
+                   <AgentPanel onSubmit={onAgentPrompt} onApprove={onApproveTool} onReject={onRejectTool} />
                 </ErrorBoundary>
               </Panel>
             </>
