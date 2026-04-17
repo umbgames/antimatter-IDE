@@ -259,8 +259,21 @@ export function App() {
         case 'read-file':
           return await tauri.readWorkspaceFile(args.path);
         case 'write-file':
-        case 'patch-file':
-          return await tauri.readWorkspaceFile(args.path);
+          await tauri.writeWorkspaceFile(args.path, args.content || '');
+          return `Successfully wrote to ${args.path}`;
+        case 'patch-file': {
+          const original = await tauri.readWorkspaceFile(args.path);
+          let proposed = original;
+          if (Array.isArray(args.replacements)) {
+            for (const r of args.replacements) {
+              if (r.search && typeof r.replace === 'string') {
+                proposed = proposed.replace(r.search, r.replace);
+              }
+            }
+          }
+          await tauri.writeWorkspaceFile(args.path, proposed);
+          return `Successfully patched ${args.path}`;
+        }
         case 'search-workspace':
           if (!currentPath) throw new Error('No workspace open');
           return await tauri.searchWorkspace(currentPath, args.query);

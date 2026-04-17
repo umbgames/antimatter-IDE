@@ -55,15 +55,41 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
             {messages.length === 0 ? (
                <div className="empty-state compact">How can I help you today?</div>
             ) : (
-              messages.map((message: AgentMessage) => (
-                <article key={message.id} className={clsx('message', `message--${message.role}`, { 'message--error': message.role === 'assistant' && message.content.startsWith('Error:') })}>
-                  <header style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    {message.role === 'assistant' || message.role === 'tool' ? <Bot size={12} /> : <User size={12} />}
-                    {message.role === 'assistant' && message.content.startsWith('Error:') ? 'System Error' : message.role}
-                  </header>
-                  <p>{message.content}</p>
-                </article>
-              ))
+              messages.map((message: AgentMessage) => {
+                const content = message.content;
+                const thoughtMatch = content.match(/<thought>([\s\S]*?)<\/thought>/);
+                const isThinking = content.includes('<thought>') && !content.includes('</thought>');
+                
+                let displayContent = content.replace(/<thought>[\s\S]*?<\/thought>/g, '').trim();
+                if (isThinking) {
+                  displayContent = displayContent.replace(/<thought>[\s\S]*/, '').trim();
+                }
+
+                return (
+                  <article key={message.id} className={clsx('message', `message--${message.role}`, { 'message--error': message.role === 'assistant' && message.content.startsWith('Error:') })}>
+                    <header style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {message.role === 'assistant' || message.role === 'tool' ? <Bot size={12} /> : <User size={12} />}
+                      {message.role === 'assistant' && message.content.startsWith('Error:') ? 'System Error' : message.role}
+                    </header>
+                    <div className="message-content">
+                      {thoughtMatch && (
+                        <details className="thought-block" style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', cursor: 'pointer' }}>
+                          <summary style={{ userSelect: 'none' }}>Thought Process</summary>
+                          <div className="thought-content" style={{ padding: '6px 8px', borderLeft: '2px solid var(--border)', marginTop: '4px', whiteSpace: 'pre-wrap', background: 'var(--bg-panel)', borderRadius: '0 4px 4px 0' }}>
+                            {thoughtMatch[1].trim()}
+                          </div>
+                        </details>
+                      )}
+                      {isThinking && (
+                        <div className="thinking-indicator" style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                          <span className="spinner-tiny" /> Model is thinking...
+                        </div>
+                      )}
+                      {displayContent && <p style={{ whiteSpace: 'pre-wrap', margin: 0, fontSize: '12px' }}>{displayContent}</p>}
+                    </div>
+                  </article>
+                );
+              })
             )}
           </div>
         </div>

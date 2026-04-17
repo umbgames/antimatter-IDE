@@ -228,11 +228,16 @@ export function Toolbar({
         </button>
       </div>
 
-      <div className="toolbar__window-controls">
+      <div className="toolbar__window-controls" data-tauri-drag-region="false">
         <button 
           className="window-control minimize" 
+          data-tauri-drag-region="false"
           onClick={async () => {
-            await getCurrentWindow().minimize();
+            try {
+              await getCurrentWindow().minimize();
+            } catch (e) {
+              console.error('Minimize error:', e);
+            }
           }}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -241,8 +246,13 @@ export function Toolbar({
         </button>
         <button 
           className="window-control maximize" 
+          data-tauri-drag-region="false"
           onClick={async () => {
-             await getCurrentWindow().toggleMaximize();
+             try {
+               await getCurrentWindow().toggleMaximize();
+             } catch (e) {
+               console.error('Maximize error:', e);
+             }
           }}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -251,8 +261,13 @@ export function Toolbar({
         </button>
         <button 
           className="window-control close" 
+          data-tauri-drag-region="false"
           onClick={async () => {
-             await getCurrentWindow().close();
+             try {
+               await getCurrentWindow().close();
+             } catch (e) {
+               console.error('Close error:', e);
+             }
           }}
         >
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">

@@ -644,8 +644,6 @@ textarea { resize: vertical; }
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 180px;
-  overflow: auto;
 }
 .message, .log-entry {
   border: 1px solid var(--border);

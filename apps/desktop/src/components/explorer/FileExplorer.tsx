@@ -4,7 +4,6 @@ import { useAppStore } from '@/store/appStore';
 import { openFileAsTab, readDirectory } from '@/lib/tauri';
 import { clsx } from 'clsx';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText } from 'lucide-react';
-import { Command } from '@tauri-apps/plugin-shell';
 
 interface ContextMenuConfig {
   x: number;
@@ -128,12 +127,16 @@ export function FileExplorer() {
     closeMenu();
   };
 
-  const executePowerShell = async (cmdString: string) => {
+  const runFileOp = async (cmdStr: string) => {
     try {
-      await Command.create('powershell', ['-c', cmdString]).execute();
-      setTimeout(() => refreshWorkspace(), 200);
+      const { executeTerminal } = await import('@/lib/tauri');
+      const { workspacePath } = useAppStore.getState();
+      if (workspacePath) {
+        await executeTerminal({ cwd: workspacePath, command: `powershell -Command "${cmdStr}"` });
+        setTimeout(() => refreshWorkspace(), 300);
+      }
     } catch (e) {
-      console.error("Shell error", e);
+      console.error("File op error", e);
     }
   };
 
@@ -141,7 +144,7 @@ export function FileExplorer() {
     if (!contextMenu) return;
     const newName = prompt('New name:', contextMenu.entry.name);
     if (newName && newName !== contextMenu.entry.name) {
-       executePowerShell(`Rename-Item "${contextMenu.entry.path}" "${newName}"`);
+       runFileOp(`Rename-Item -LiteralPath '${contextMenu.entry.path}' -NewName '${newName}'`);
     }
     closeMenu();
   };
@@ -149,18 +152,24 @@ export function FileExplorer() {
   const handleDelete = () => {
     if (!contextMenu) return;
     if (confirm(`Are you sure you want to delete ${contextMenu.entry.name}?`)) {
-       executePowerShell(`Remove-Item -Recurse -Force "${contextMenu.entry.path}"`);
+       runFileOp(`Remove-Item -LiteralPath '${contextMenu.entry.path}' -Recurse -Force`);
     }
     closeMenu();
   };
 
-  const handleNewFile = () => {
+  const handleNewFile = async () => {
     if (!contextMenu) return;
     const isDir = contextMenu.entry.isDirectory;
-    const parentPath = isDir ? contextMenu.entry.path : contextMenu.entry.path.substring(0, contextMenu.entry.path.lastIndexOf('\\'));
+    const parentPath = isDir ? contextMenu.entry.path : contextMenu.entry.path.replace(/[\\/][^\\/]+$/, '');
     const newName = prompt('New file name:');
     if (newName) {
-       executePowerShell(`New-Item -Path "${parentPath}\\${newName}" -ItemType File`);
+       const { writeWorkspaceFile } = await import('@/lib/tauri');
+       try {
+         await writeWorkspaceFile(`${parentPath}/${newName}`, '');
+         setTimeout(() => refreshWorkspace(), 200);
+       } catch (e) {
+         runFileOp(`New-Item -Path '${parentPath}/${newName}' -ItemType File`);
+       }
     }
     closeMenu();
   };
@@ -168,10 +177,10 @@ export function FileExplorer() {
   const handleNewFolder = () => {
     if (!contextMenu) return;
     const isDir = contextMenu.entry.isDirectory;
-    const parentPath = isDir ? contextMenu.entry.path : contextMenu.entry.path.substring(0, contextMenu.entry.path.lastIndexOf('\\'));
+    const parentPath = isDir ? contextMenu.entry.path : contextMenu.entry.path.replace(/[\\/][^\\/]+$/, '');
     const newName = prompt('New folder name:');
     if (newName) {
-       executePowerShell(`New-Item -Path "${parentPath}\\${newName}" -ItemType Directory`);
+       runFileOp(`New-Item -Path '${parentPath}/${newName}' -ItemType Directory`);
     }
     closeMenu();
   };
