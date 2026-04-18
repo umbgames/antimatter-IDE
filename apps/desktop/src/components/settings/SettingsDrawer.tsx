@@ -5,20 +5,34 @@ interface Props {
   onClose: () => void;
 }
 
+const KEYBINDINGS = [
+  { id: 'mod+p', label: 'Command Palette', description: 'Open the command palette' },
+  { id: 'mod+,', label: 'Settings', description: 'Open settings' },
+  { id: 'mod+b', label: 'Toggle Terminal', description: 'Show/hide the bottom panel' },
+  { id: 'mod+s', label: 'Save File', description: 'Save the active file' },
+  { id: 'mod+w', label: 'Close File', description: 'Close the active tab' },
+  { id: 'mod+n', label: 'New File', description: 'Create a new untitled file' },
+];
+
 export function SettingsDrawer({ open, onClose }: Props) {
   const { 
     theme, setTheme, 
     agentDockSide, setAgentDockSide, 
     bottomPanelOpen, toggleBottomPanel,
     providerConfigs, selectedProviderId, setSelectedProviderId,
-    inlineCompletionsEnabled, setInlineCompletionsEnabled
+    inlineCompletionsEnabled, setInlineCompletionsEnabled,
+    fileWatcherEnabled, setFileWatcherEnabled,
+    clearConversation
   } = useAppStore();
 
   if (!open) return null;
 
+  const isMac = navigator.platform.toLowerCase().includes('mac');
+  const modKey = isMac ? '⌘' : 'Ctrl';
+
   return (
     <div className="overlay">
-      <div className="modal drawer">
+      <div className="modal drawer" style={{ maxHeight: 'calc(100vh - 48px)', overflow: 'auto' }}>
         <div className="panel__header">
           <div>
             <h3>Settings</h3>
@@ -71,10 +85,44 @@ export function SettingsDrawer({ open, onClose }: Props) {
               <input type="checkbox" checked={inlineCompletionsEnabled} onChange={(e) => setInlineCompletionsEnabled(e.target.checked)} />
               <span>Enable Inline AI Autocomplete (Ghost Text)</span>
             </label>
-            <label className="checkbox-row" style={{ marginTop: '12px' }}>
+            <label className="checkbox-row" style={{ marginTop: '8px' }}>
               <input type="checkbox" checked={bottomPanelOpen} onChange={toggleBottomPanel} />
               <span>Show bottom terminal panel by default</span>
             </label>
+            <label className="checkbox-row" style={{ marginTop: '8px' }}>
+              <input type="checkbox" checked={fileWatcherEnabled} onChange={(e) => setFileWatcherEnabled(e.target.checked)} />
+              <span>Auto-refresh file explorer (5s polling)</span>
+            </label>
+            <div style={{ marginTop: '12px' }}>
+              <button className="button" onClick={clearConversation}>
+                Clear Conversation History
+              </button>
+            </div>
+          </div>
+
+          <h4 className="settings-group-title">Keyboard Shortcuts</h4>
+          <div className="settings-group">
+            <div className="keybinding-list">
+              {KEYBINDINGS.map((kb) => (
+                <div key={kb.id} className="keybinding-row">
+                  <div className="keybinding-info">
+                    <span className="keybinding-label">{kb.label}</span>
+                    <span className="keybinding-desc">{kb.description}</span>
+                  </div>
+                  <kbd className="keybinding-keys">
+                    {kb.id.replace('mod', modKey).split('+').map((key, i) => (
+                      <span key={i}>
+                        {i > 0 && <span className="keybinding-sep">+</span>}
+                        <span className="keybinding-key">{key.toUpperCase()}</span>
+                      </span>
+                    ))}
+                  </kbd>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
+              Keybinding customization coming soon. Use the Command Palette ({modKey}+P) to access all commands.
+            </p>
           </div>
         </section>
       </div>

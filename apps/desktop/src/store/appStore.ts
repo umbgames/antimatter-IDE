@@ -45,6 +45,14 @@ interface AppState {
   paletteItems: PaletteItem[];
   gitStatus?: GitStatus;
   pendingChange?: DiffPreview;
+  inlineCompletionsEnabled: boolean;
+  activePersona: 'engineer' | 'architect' | 'qa';
+
+  // ─── New State ───
+  isAgentRunning: boolean;
+  fileWatcherEnabled: boolean;
+
+  // ─── Actions ───
   setTheme: (theme: ThemeMode) => void;
   setWorkspacePath: (path?: string) => void;
   setWorkspaceEntries: (entries: WorkspaceEntry[]) => void;
@@ -68,11 +76,14 @@ interface AppState {
   registerPaletteItems: (items: PaletteItem[]) => void;
   refreshGitStatus: () => Promise<void>;
   setPendingChange: (change?: DiffPreview) => void;
-  inlineCompletionsEnabled: boolean;
   setInlineCompletionsEnabled: (enabled: boolean) => void;
-  activePersona: 'engineer' | 'architect' | 'qa';
   setActivePersona: (persona: 'engineer' | 'architect' | 'qa') => void;
   setWorkspace: (path: string | null, entries: WorkspaceEntry[]) => void;
+
+  // ─── New Actions ───
+  setIsAgentRunning: (running: boolean) => void;
+  clearConversation: () => void;
+  setFileWatcherEnabled: (enabled: boolean) => void;
 }
 
 export const initialProviders: ProviderConfig[] = providerDefaults.map((provider, index) => ({
@@ -84,6 +95,14 @@ export const initialProviders: ProviderConfig[] = providerDefaults.map((provider
   apiKeyStored: false,
   status: 'unknown'
 }));
+
+const INITIAL_SYSTEM_MESSAGE: AgentMessage = {
+  id: crypto.randomUUID(),
+  role: 'system',
+  content:
+    'Antimatter is local-first. Bring your own provider key or custom endpoint. Performance depends on the connected provider or hardware you already control.',
+  createdAt: new Date().toISOString()
+};
 
 export const useAppStore = create<AppState>((set) => ({
   theme: 'dark',
@@ -101,18 +120,16 @@ export const useAppStore = create<AppState>((set) => ({
   providerConfigs: initialProviders,
   inlineCompletionsEnabled: true,
   activePersona: 'engineer',
-  messages: [
-    {
-      id: crypto.randomUUID(),
-      role: 'system',
-      content:
-        'Antimatter is local-first. Bring your own provider key or custom endpoint. Performance depends on the connected provider or hardware you already control.',
-      createdAt: new Date().toISOString()
-    }
-  ],
+  messages: [INITIAL_SYSTEM_MESSAGE],
   actionLogs: [],
   approvalRequests: [],
   paletteItems: [],
+
+  // ─── New defaults ───
+  isAgentRunning: false,
+  fileWatcherEnabled: true,
+
+  // ─── Actions ───
   setTheme: (theme) => set({ theme }),
   setWorkspacePath: (workspacePath) => set({ workspacePath }),
   setWorkspaceEntries: (workspaceEntries) => set({ workspaceEntries }),
@@ -171,7 +188,17 @@ export const useAppStore = create<AppState>((set) => ({
   },
   setPendingChange: (pendingChange) => set({ pendingChange }),
   setInlineCompletionsEnabled: (inlineCompletionsEnabled) => set({ inlineCompletionsEnabled }),
-  setActivePersona: (activePersona) => set({ activePersona })
+  setActivePersona: (activePersona) => set({ activePersona }),
+
+  // ─── New Actions ───
+  setIsAgentRunning: (isAgentRunning) => set({ isAgentRunning }),
+  clearConversation: () => set({
+    messages: [INITIAL_SYSTEM_MESSAGE],
+    actionLogs: [],
+    approvalRequests: [],
+    isAgentRunning: false
+  }),
+  setFileWatcherEnabled: (fileWatcherEnabled) => set({ fileWatcherEnabled }),
 }));
 
 export function deriveSettingsFromStore(state: AppState): AppSettings {

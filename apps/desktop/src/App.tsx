@@ -25,7 +25,8 @@ import {
   loadProviders,
   loadSettings,
   saveSettings,
-  writeWorkspaceFile
+  writeWorkspaceFile,
+  readDirectory
 } from './lib/tauri';
 
 export function App() {
@@ -60,6 +61,9 @@ export function App() {
   const toggleBottomPanel = useAppStore(s => s.toggleBottomPanel);
   const setWelcomeVisible = useAppStore(s => s.setWelcomeVisible);
   const setPendingChange = useAppStore(s => s.setPendingChange);
+  const setIsAgentRunning = useAppStore(s => s.setIsAgentRunning);
+  const setWorkspaceEntries = useAppStore(s => s.setWorkspaceEntries);
+  const clearConversation = useAppStore(s => s.clearConversation);
 
   const [sidebarTab, setSidebarTab] = React.useState<'explorer' | 'search' | 'source'>('explorer');
   const indexingVersion = useRef(0);
@@ -205,7 +209,8 @@ export function App() {
       { id: 'save-file', title: 'File: Save', category: 'File', action: () => { void saveActiveFile(); } },
       { id: 'close-file', title: 'File: Close File', category: 'File', action: closeActiveFile },
       { id: 'toggle-terminal', title: `View: ${bottomPanelOpen ? 'Hide' : 'Show'} Terminal`, category: 'View', action: toggleBottomPanel },
-      { id: 'welcome', title: 'Help: Show Welcome', category: 'Help', action: () => setWelcomeVisible(true) }
+      { id: 'welcome', title: 'Help: Show Welcome', category: 'Help', action: () => setWelcomeVisible(true) },
+      { id: 'clear-chat', title: 'Agent: Clear Conversation', category: 'AI', action: clearConversation }
     ],
     [setAgentDockSide, setProvidersOpen, setSettingsOpen, setTheme, theme, bottomPanelOpen, toggleBottomPanel, setWelcomeVisible, newFile, saveActiveFile, closeActiveFile]
   );
@@ -213,6 +218,18 @@ export function App() {
   useEffect(() => {
     registerPaletteItems(paletteItems);
   }, [paletteItems, registerPaletteItems]);
+
+  /* ─── File Watcher (auto-refresh explorer) ─── */
+  useEffect(() => {
+    if (!workspacePath) return;
+    const interval = setInterval(async () => {
+      try {
+        const entries = await readDirectory(workspacePath);
+        setWorkspaceEntries(entries);
+      } catch { /* ignore */ }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [workspacePath, setWorkspaceEntries]);
 
   /* ─── Agent ─── */
   const onAgentPrompt = useCallback(async (prompt: string) => {
@@ -224,20 +241,8 @@ export function App() {
       createdAt: now
     };
     appendMessage(userMessage);
-
-    const plannedLogs = [
-      {
-        id: crypto.randomUUID(),
-        kind: 'plan' as const,
-        title: 'Planned next step',
-        detail: selectedProvider
-          ? `Routing through ${selectedProvider.label} · ${selectedProvider.model}`
-          : 'No provider selected — configure one first.',
-        createdAt: now
-      }
-    ];
-    appendLogs(plannedLogs);
     setApprovalRequests([]);
+    setIsAgentRunning(true);
 
     const state = useAppStore.getState();
     const context = {
@@ -274,28 +279,64 @@ export function App() {
           await tauri.writeWorkspaceFile(args.path, proposed);
           return `Successfully patched ${args.path}`;
         }
+        case 'delete-file':
+          return await tauri.deleteWorkspaceFile(args.path);
+        case 'rename-file':
+          return await tauri.renameWorkspaceFile(args.from, args.to);
+        case 'list-directory': {
+          if (args.recursive) {
+            return await tauri.listDirectoryRecursive(args.path || currentPath || '', args.maxDepth);
+          }
+          return await tauri.readDirectory(args.path || currentPath || '');
+        }
+        case 'create-directory':
+          return await tauri.createWorkspaceDirectory(args.path);
         case 'search-workspace':
           if (!currentPath) throw new Error('No workspace open');
           return await tauri.searchWorkspace(currentPath, args.query);
+        case 'grep-search':
+          if (!currentPath) throw new Error('No workspace open');
+          return await tauri.grepSearch(currentPath, args.pattern, args.include, args.path);
         case 'query-codebase':
           return await codebaseIndexer.search(args.query);
         case 'terminal-exec':
           if (!currentPath) throw new Error('No workspace open');
           return await tauri.executeTerminal({ cwd: currentPath, command: args.command });
+        case 'analyze-file':
+          return await tauri.analyzeFile(args.path);
+        case 'analyze-project':
+          if (!currentPath) throw new Error('No workspace open');
+          return await tauri.analyzeProject(currentPath);
+        case 'analyze-dependencies':
+          if (!currentPath) throw new Error('No workspace open');
+          return await tauri.analyzeDependencies(currentPath, args.path);
+        case 'get-file-info':
+          return await tauri.getFileInfo(args.path);
+        case 'fetch-url':
+          return await tauri.fetchUrl(args.url);
+        case 'bulk-replace':
+          if (!currentPath) throw new Error('No workspace open');
+          return await tauri.bulkReplace(currentPath, args.search, args.replace, args.include, args.path);
         default:
-          throw new Error(`Tool ${toolId} not implemented in runtime.`);
+          throw new Error(`Tool "${toolId}" is not implemented.`);
       }
     });
 
     appendLogs(result.logs);
     setApprovalRequests(result.approvalRequests);
     appendMessage(result.reply);
+    setIsAgentRunning(false);
 
     const firstWithDiff = result.approvalRequests.find(r => r.diff);
     if (firstWithDiff?.diff) {
       setPendingChange(firstWithDiff.diff);
     }
-  }, [selectedProvider, appendMessage, appendLogs, setApprovalRequests, setPendingChange]);
+
+    // Auto-refresh workspace entries after agent finishes (it may have created/deleted files)
+    if (workspacePath) {
+      readDirectory(workspacePath).then(entries => setWorkspaceEntries(entries)).catch(() => {});
+    }
+  }, [selectedProvider, appendMessage, appendLogs, setApprovalRequests, setPendingChange, setIsAgentRunning, workspacePath, setWorkspaceEntries]);
 
   const onApproveTool = useCallback(async (request: any) => {
     setApprovalRequests(useAppStore.getState().approvalRequests.filter(r => r.id !== request.id));
