@@ -55,7 +55,7 @@ export interface AgentMessage {
 
 export interface AgentActionLog {
   id: string;
-  kind: 'plan' | 'tool' | 'approval' | 'info' | 'error';
+  kind: 'plan' | 'tool' | 'approval' | 'info' | 'error' | 'success';
   title: string;
   detail: string;
   createdAt: string;
