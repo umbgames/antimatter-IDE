@@ -252,7 +252,7 @@ export function App() {
       persona: state.activePersona,
       createChat: async (request: any, config: any) => {
         const tauri = await import('./lib/tauri');
-        return await tauri.chatWithProvider(config.id, request.messages);
+        return await tauri.chatWithProvider(config.id, request.messages, request.tools);
       }
     };
 

@@ -177,8 +177,32 @@ function inferLanguage(fileName: string): string {
 export interface RuntimeChatMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
+  toolCalls?: RuntimeToolCall[];
+  toolCallId?: string;
+  name?: string;
 }
 
-export async function chatWithProvider(providerId: string, messages: RuntimeChatMessage[]): Promise<string> {
-  return invoke('chat_with_provider', { providerId, messages });
+export interface RuntimeToolCallFunction {
+  name: string;
+  arguments: string;
 }
+
+export interface RuntimeToolCall {
+  id: string;
+  callType?: string;
+  function: RuntimeToolCallFunction;
+}
+
+export interface ChatResponse {
+  content: string | null;
+  toolCalls: RuntimeToolCall[] | null;
+}
+
+export async function chatWithProvider(
+  providerId: string,
+  messages: RuntimeChatMessage[],
+  tools?: any[]
+): Promise<ChatResponse> {
+  return invoke('chat_with_provider', { providerId, messages, tools: tools ?? null });
+}
+
