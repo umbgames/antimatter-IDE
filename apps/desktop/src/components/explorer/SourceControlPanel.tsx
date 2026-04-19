@@ -34,7 +34,7 @@ export function SourceControlPanel() {
       const suggestion = await chatWithProvider(selectedProviderId, [
         { role: 'user', content: prompt }
       ]);
-      setCommitMessage(suggestion.trim());
+      setCommitMessage(suggestion.content?.trim() ?? '');
     } catch (e: any) {
       setCommitMessage(`Error generating message: ${e.message}`);
     } finally {

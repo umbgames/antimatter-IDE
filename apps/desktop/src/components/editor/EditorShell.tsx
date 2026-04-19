@@ -60,7 +60,7 @@ export function EditorShell() {
           
           return {
             items: [{
-              insertText: completion.trim(),
+              insertText: completion.content?.trim() ?? '',
               range: {
                 startLineNumber: position.lineNumber,
                 startColumn: position.column,
