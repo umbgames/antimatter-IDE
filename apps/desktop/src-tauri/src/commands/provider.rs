@@ -1,5 +1,5 @@
 use crate::{
-    models::{ChatMessage, ProviderConfig, ProviderTestResult},
+    models::{ChatMessage, ChatResponse, ProviderConfig, ProviderTestResult, ToolCall, ToolCallFunction},
     storage,
 };
 use reqwest::{header, Client};
@@ -42,7 +42,11 @@ pub async fn test_provider_connection(config: ProviderConfig, api_key: Option<St
 }
 
 #[tauri::command]
-pub async fn chat_with_provider(provider_id: String, messages: Vec<ChatMessage>) -> Result<String, String> {
+pub async fn chat_with_provider(
+    provider_id: String,
+    messages: Vec<ChatMessage>,
+    tools: Option<serde_json::Value>,
+) -> Result<ChatResponse, String> {
     let config = storage::load_providers()
         .into_iter()
         .find(|entry| entry.id == provider_id)
@@ -51,10 +55,10 @@ pub async fn chat_with_provider(provider_id: String, messages: Vec<ChatMessage>)
     match config.kind.as_str() {
         "groq" | "openai" | "openai-compatible" | "local" => {
             let client = Client::new();
-            send_openai_compatible_chat(&client, &config, &messages).await
+            send_openai_compatible_chat(&client, &config, &messages, tools.as_ref()).await
         }
-        "anthropic" => Err("Anthropic transport is not wired in this starter yet. Groq, OpenAI, local OpenAI-compatible, and custom OpenAI-compatible endpoints are live.".into()),
-        "gemini" => Err("Gemini transport is not wired in this starter yet. Groq, OpenAI, local OpenAI-compatible, and custom OpenAI-compatible endpoints are live.".into()),
+        "anthropic" => Err("Anthropic transport is not wired in this starter yet.".into()),
+        "gemini" => Err("Gemini transport is not wired in this starter yet.".into()),
         _ => Err("Unsupported provider kind.".into()),
     }
 }
@@ -90,50 +94,174 @@ async fn send_openai_compatible_chat(
     client: &Client,
     config: &ProviderConfig,
     messages: &[ChatMessage],
-) -> Result<String, String> {
+    tools: Option<&serde_json::Value>,
+) -> Result<ChatResponse, String> {
     if config.model.trim().is_empty() {
         return Err("Choose a default model before running the agent.".into());
     }
 
     let url = format!("{}/chat/completions", normalized_base_url(config)?);
-    let normalized_messages: Vec<_> = messages
+
+    // Build message array with full tool-calling support
+    let normalized_messages: Vec<serde_json::Value> = messages
         .iter()
-        .map(|message| json!({
-            "role": normalize_role(&message.role),
-            "content": message.content,
-        }))
+        .map(|msg| {
+            let role = normalize_role(&msg.role);
+            let mut m = json!({ "role": role });
+
+            // Content — always include (can be null for assistant tool-call messages)
+            if msg.content.is_empty() && msg.tool_calls.is_some() {
+                m["content"] = serde_json::Value::Null;
+            } else {
+                m["content"] = json!(msg.content);
+            }
+
+            // tool_calls — when replaying an assistant message that called tools
+            if let Some(ref tc) = msg.tool_calls {
+                let calls: Vec<serde_json::Value> = tc.iter().map(|call| {
+                    json!({
+                        "id": call.id,
+                        "type": "function",
+                        "function": {
+                            "name": call.function.name,
+                            "arguments": call.function.arguments
+                        }
+                    })
+                }).collect();
+                m["tool_calls"] = json!(calls);
+            }
+
+            // tool_call_id — when this is a tool result message
+            if let Some(ref tcid) = msg.tool_call_id {
+                m["role"] = json!("tool");
+                m["tool_call_id"] = json!(tcid);
+            }
+
+            // name — optional function name on tool result messages
+            if let Some(ref name) = msg.name {
+                m["name"] = json!(name);
+            }
+
+            m
+        })
         .collect();
 
-    let mut request = client
-        .post(url)
-        .header(header::CONTENT_TYPE, "application/json")
-        .json(&json!({
-            "model": config.model,
-            "messages": normalized_messages,
-            "temperature": 0.2,
-        }));
+    let secret = if config.kind != "local" {
+        Some(storage::get_provider_secret(&config.id)?
+            .ok_or_else(|| format!("No API key is stored for '{}' yet. Save one in Settings → Providers before running the agent.", config.label))?)
+    } else {
+        None
+    };
 
-    if config.kind != "local" {
-        let secret = storage::get_provider_secret(&config.id)?
-            .ok_or_else(|| format!("No API key is stored for '{}' yet. Save one in Settings → Providers before running the agent.", config.label))?;
-        request = request.bearer_auth(secret);
+    // Build payload — include tools if provided
+    let mut payload = json!({
+        "model": config.model,
+        "messages": normalized_messages,
+        "temperature": 0.2,
+    });
+
+    if let Some(tools_val) = tools {
+        if tools_val.is_array() && !tools_val.as_array().unwrap().is_empty() {
+            payload["tools"] = tools_val.clone();
+            payload["tool_choice"] = json!("auto");
+        }
+    }
+
+    let mut request = client
+        .post(&url)
+        .header(header::CONTENT_TYPE, "application/json")
+        .json(&payload);
+
+    if let Some(ref key) = secret {
+        request = request.bearer_auth(key);
     }
 
     let response = request.send().await.map_err(format_network_error)?;
+
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
+
+        // If tools caused a rejection (some providers/models don't support them),
+        // retry without tools — falling back to system-prompt-only tool descriptions
+        let is_tool_related_error = status.as_u16() == 400
+            && (body.contains("tool") || body.contains("function"));
+
+        if is_tool_related_error && tools.is_some() {
+            let mut fallback_payload = json!({
+                "model": config.model,
+                "messages": normalized_messages,
+                "temperature": 0.2,
+            });
+            // Don't include tools in fallback
+
+            let mut retry_request = client
+                .post(&url)
+                .header(header::CONTENT_TYPE, "application/json")
+                .json(&fallback_payload);
+
+            if let Some(ref key) = secret {
+                retry_request = retry_request.bearer_auth(key);
+            }
+
+            let retry_response = retry_request.send().await.map_err(format_network_error)?;
+
+            if !retry_response.status().is_success() {
+                let retry_status = retry_response.status();
+                let retry_body = retry_response.text().await.unwrap_or_default();
+                return Err(format!("Provider returned {}. {}", retry_status, compact_error_body(&retry_body)));
+            }
+
+            return extract_chat_response(retry_response).await;
+        }
+
         return Err(format!("Provider returned {}. {}", status, compact_error_body(&body)));
     }
 
+    extract_chat_response(response).await
+}
+
+/// Extract the full ChatResponse (content + tool_calls) from a successful API response.
+async fn extract_chat_response(response: reqwest::Response) -> Result<ChatResponse, String> {
     let json: serde_json::Value = response.json().await.map_err(format_network_error)?;
-    json.get("choices")
-        .and_then(|choices| choices.get(0))
-        .and_then(|choice| choice.get("message"))
-        .and_then(|message| message.get("content"))
-        .and_then(|content| content.as_str())
-        .map(|content| content.to_string())
-        .ok_or_else(|| "Provider response did not contain assistant text in choices[0].message.content.".to_string())
+
+    let message = json.get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("message"))
+        .ok_or_else(|| "Provider response did not contain choices[0].message.".to_string())?;
+
+    // Extract content (may be null for tool-calling responses)
+    let content = message.get("content")
+        .and_then(|c| c.as_str())
+        .map(|s| s.to_string());
+
+    // Extract tool_calls if present
+    let tool_calls = message.get("tool_calls")
+        .and_then(|tc| tc.as_array())
+        .map(|arr| {
+            arr.iter().filter_map(|tc| {
+                let id = tc.get("id")?.as_str()?.to_string();
+                let call_type = tc.get("type").and_then(|t| t.as_str()).map(|s| s.to_string());
+                let function = tc.get("function")?;
+                let name = function.get("name")?.as_str()?.to_string();
+                let arguments = function.get("arguments")?.as_str()?.to_string();
+                Some(ToolCall {
+                    id,
+                    call_type,
+                    function: ToolCallFunction { name, arguments },
+                })
+            }).collect::<Vec<_>>()
+        })
+        .filter(|v: &Vec<ToolCall>| !v.is_empty());
+
+    if content.is_none() && tool_calls.is_none() {
+        return Err("Provider response contained neither content nor tool_calls.".to_string());
+    }
+
+    Ok(ChatResponse {
+        content,
+        tool_calls,
+    })
 }
 
 fn normalized_base_url(config: &ProviderConfig) -> Result<String, String> {
@@ -166,7 +294,8 @@ fn default_base_url(kind: &str) -> String {
 fn normalize_role(role: &str) -> &'static str {
     match role {
         "system" => "system",
-        "assistant" | "tool" => "assistant",
+        "assistant" => "assistant",
+        "tool" => "tool",
         _ => "user",
     }
 }
