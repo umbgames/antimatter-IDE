@@ -5,17 +5,45 @@ export interface ProviderContext {
   baseUrl?: string;
 }
 
+export interface ChatToolCall {
+  id: string;
+  type?: string;
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
 export interface ChatRequest {
   model: string;
   systemPrompt?: string;
-  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+  messages: Array<{
+    role: 'user' | 'assistant' | 'system' | 'tool';
+    content: string;
+    tool_calls?: ChatToolCall[];
+    tool_call_id?: string;
+    name?: string;
+  }>;
+  tools?: Array<{
+    type: 'function';
+    function: {
+      name: string;
+      description: string;
+      parameters: Record<string, any>;
+    };
+  }>;
+}
+
+export interface ChatResponse {
+  content: string | null;
+  toolCalls: ChatToolCall[] | null;
 }
 
 export interface ProviderClient {
   kind: ProviderKind;
   label: string;
   testConnection(config: ProviderConfig, context?: ProviderContext): Promise<ProviderTestResult>;
-  createChat(request: ChatRequest, config: ProviderConfig, context?: ProviderContext): Promise<string>;
+  createChat(request: ChatRequest, config: ProviderConfig, context?: ProviderContext): Promise<ChatResponse>;
 }
 
 class StubProviderClient implements ProviderClient {
@@ -31,17 +59,20 @@ class StubProviderClient implements ProviderClient {
     };
   }
 
-  async createChat(request: ChatRequest, config: ProviderConfig): Promise<string> {
+  async createChat(request: ChatRequest, config: ProviderConfig): Promise<ChatResponse> {
     const lastMessage = request.messages.at(-1)?.content ?? '';
-    return [
-      `Provider: ${this.label}`,
-      `Model: ${config.model}`,
-      '',
-      'This provider is currently scaffolded but not live in the web runtime.',
-      'Use the Tauri backend integration or implement the browser transport here.',
-      '',
-      `Echo: ${lastMessage}`
-    ].join('\n');
+    return {
+      content: [
+        `Provider: ${this.label}`,
+        `Model: ${config.model}`,
+        '',
+        'This provider is currently scaffolded but not live in the web runtime.',
+        'Use the Tauri backend integration or implement the browser transport here.',
+        '',
+        `Echo: ${lastMessage}`
+      ].join('\n'),
+      toolCalls: null
+    };
   }
 }
 
@@ -75,7 +106,7 @@ class OpenAICompatibleProviderClient implements ProviderClient {
     };
   }
 
-  async createChat(request: ChatRequest, config: ProviderConfig, context?: ProviderContext): Promise<string> {
+  async createChat(request: ChatRequest, config: ProviderConfig, context?: ProviderContext): Promise<ChatResponse> {
     const baseUrl = this.resolveBaseUrl(config, context);
     if (!baseUrl) {
       throw new Error('This provider needs a base URL before chat can run.');
@@ -84,30 +115,88 @@ class OpenAICompatibleProviderClient implements ProviderClient {
       throw new Error('This provider needs an API key in the runtime context for browser-side chat.');
     }
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(this.kind !== 'local' && context?.apiKey ? { Authorization: `Bearer ${context.apiKey}` } : {})
+    };
+
+    // Build the request body
+    const body: Record<string, any> = {
+      model: config.model,
+      messages: request.messages,
+      temperature: 0.2
+    };
+
+    // Include tools if provided (enables native function calling)
+    if (request.tools && request.tools.length > 0) {
+      body.tools = request.tools;
+      body.tool_choice = 'auto';
+    }
+
+    let response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(this.kind !== 'local' && context?.apiKey ? { Authorization: `Bearer ${context.apiKey}` } : {})
-      },
-      body: JSON.stringify({
-        model: config.model,
-        messages: request.messages,
-        temperature: 0.2
-      })
+      headers,
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {
       const detail = await response.text();
-      throw new Error(`${this.label} returned ${response.status}: ${detail || response.statusText}`);
+
+      // If tools caused a rejection, retry without them
+      const isToolRejected = response.status === 400
+        && request.tools && request.tools.length > 0
+        && (detail.includes('tool') || detail.includes('function'));
+
+      if (isToolRejected) {
+        const fallbackBody = { ...body };
+        delete fallbackBody.tools;
+        delete fallbackBody.tool_choice;
+
+        response = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(fallbackBody)
+        });
+
+        if (!response.ok) {
+          const retryDetail = await response.text();
+          throw new Error(`${this.label} returned ${response.status}: ${retryDetail || response.statusText}`);
+        }
+      } else {
+        throw new Error(`${this.label} returned ${response.status}: ${detail || response.statusText}`);
+      }
     }
 
     const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') {
-      throw new Error(`${this.label} did not return assistant text in choices[0].message.content.`);
+    return this.extractResponse(data);
+  }
+
+  private extractResponse(data: any): ChatResponse {
+    const message = data?.choices?.[0]?.message;
+    if (!message) {
+      throw new Error(`${this.label} did not return choices[0].message.`);
     }
-    return content;
+
+    const content = typeof message.content === 'string' && message.content.length > 0
+      ? message.content
+      : null;
+
+    const toolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length > 0
+      ? message.tool_calls.map((tc: any) => ({
+          id: tc.id,
+          type: tc.type,
+          function: {
+            name: tc.function.name,
+            arguments: tc.function.arguments
+          }
+        }))
+      : null;
+
+    if (!content && !toolCalls) {
+      throw new Error(`${this.label} response contained neither content nor tool_calls.`);
+    }
+
+    return { content, toolCalls };
   }
 
   private resolveBaseUrl(config: ProviderConfig, context?: ProviderContext): string {

@@ -1,13 +1,17 @@
 import type { AgentActionLog, AgentMessage, ApprovalRequest, ProviderConfig } from '@antimatter/shared';
 import { providerRegistry } from '@antimatter/providers';
-import { builtInTools } from '@antimatter/tools';
+import type { ChatResponse } from '@antimatter/providers';
+import { builtInTools, toOpenAITools } from '@antimatter/tools';
 
 export interface AgentRunContext {
   provider?: ProviderConfig;
   messages: AgentMessage[];
   workspacePath?: string;
   persona?: 'engineer' | 'architect' | 'qa';
-  createChat?: (request: { model: string; messages: { role: string; content: string }[] }, config: ProviderConfig) => Promise<string>;
+  createChat?: (
+    request: { model: string; messages: { role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }[]; tools?: any[] },
+    config: ProviderConfig
+  ) => Promise<ChatResponse>;
 }
 
 export interface AgentRunResult {
@@ -55,17 +59,17 @@ You operate inside a desktop IDE and can directly read, write, and modify files,
 
 ## Core Rules
 
-1. **Act, don't describe.** When asked to create a file, write code, or run a command — DO IT using tools. Never just show code in your response without also writing it to a file.
-2. **One tool per turn.** Call exactly ONE tool at a time. After execution, you'll get an <observation> with the result, then you can call another tool.
+1. **Act, don't describe.** When asked to create a file, write code, or run a command — DO IT using the available tools. Never just show code in your response without also writing it to a file.
+2. **Use tools aggressively.** Call tools whenever you need to interact with the workspace. You can call tools either via native function calling OR via the XML format below — use whichever your architecture supports.
 3. **Think briefly, then act.** Start each response with a one-line thought, then immediately use a tool.
 4. **Be precise with paths.** Use the workspace path as the root. If the workspace is at \`C:/projects/myapp\`, a file at \`src/index.ts\` should be \`C:/projects/myapp/src/index.ts\`.
 5. **Use terminal-exec freely.** You have direct terminal access. Use it for: installing packages (npm/pip/cargo), running builds, running tests, git commands, file system operations, or anything else needed.
 6. **Analyze before modifying.** When working on existing code, use read-file or analyze-file first to understand the current state before making changes.
 7. **Professional tone.** Be concise, technical, and helpful. No unnecessary chatter.
 
-## Tool Call Format
+## Tool Call Format (XML Fallback)
 
-To use a tool, output this exact XML format:
+If you do NOT support native function/tool calling, use this exact XML format:
 \`\`\`
 <tool_call id="tool-id">{"key": "value"}</tool_call>
 \`\`\`
@@ -140,7 +144,7 @@ Remember: You have FULL access to the terminal and file system. Use it. Don't as
 `;
 }
 
-// ─── Tool Call Parser ───
+// ─── Tool Call Parser (XML Fallback) ───
 
 function parseToolCall(response: string): { toolId: string; args: any } | null {
   // Strategy 1: Standard XML format <tool_call id="...">...</tool_call>
@@ -176,7 +180,7 @@ function parseToolCall(response: string): { toolId: string; args: any } | null {
   }
 
   // Strategy 3: Inline pattern (some models)
-  const inlineMatch = response.match(/tool_call[:\s]+["']?(\w[\w-]+)["']?\s*(\{[\s\S]*?\})/i);
+  const inlineMatch = response.match(/tool_call[:\s]+["']?([\w][\w-]+)["']?\s*(\{[\s\S]*?\})/i);
   if (inlineMatch) {
     try {
       return { toolId: inlineMatch[1], args: JSON.parse(inlineMatch[2]) };
@@ -215,6 +219,17 @@ function detectImplicitFileCreation(response: string, workspacePath?: string): {
   };
 }
 
+// ─── Native Tool Call Types ───
+
+interface NativeToolCall {
+  id: string;
+  type?: string;
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
 // ─── Agent Loop ───
 
 export async function runAgentLoop(
@@ -223,7 +238,15 @@ export async function runAgentLoop(
 ): Promise<AgentRunResult> {
   const now = new Date().toISOString();
   const logs: AgentActionLog[] = [];
-  const currentMessages = [...context.messages];
+  const currentMessages: Array<{
+    id: string;
+    role: 'user' | 'assistant' | 'system' | 'tool';
+    content: string;
+    createdAt: string;
+    toolCalls?: NativeToolCall[];
+    toolCallId?: string;
+    name?: string;
+  }> = [...context.messages.map(m => ({ ...m, toolCalls: undefined as NativeToolCall[] | undefined, toolCallId: undefined as string | undefined, name: undefined as string | undefined }))];
   const provider = context.provider;
 
   if (!provider) {
@@ -250,6 +273,9 @@ export async function runAgentLoop(
     ? `\n\n## Current Workspace\nPath: \`${context.workspacePath}\`\nAll file operations should use absolute paths based on this workspace root.`
     : '\n\nNo workspace is currently open. The user may need to open one first.';
 
+  // Get native tools for the API
+  const nativeTools = toOpenAITools();
+
   let loopCount = 0;
   const MAX_LOOPS = 12;
 
@@ -257,19 +283,17 @@ export async function runAgentLoop(
     loopCount++;
     try {
       // ─── Context Window Management ───
-      // Estimate tokens (~4 chars per token) and trim if too long
-      const MAX_CONTEXT_CHARS = 48000; // ~12K tokens
+      const MAX_CONTEXT_CHARS = 48000;
       let trimmedMessages = [...currentMessages];
       let totalChars = trimmedMessages.reduce((sum, m) => sum + m.content.length, 0);
       
       while (totalChars > MAX_CONTEXT_CHARS && trimmedMessages.length > 3) {
-        // Keep first message (system context) and last messages, remove from middle
         const removeIdx = Math.min(1, trimmedMessages.length - 2);
         totalChars -= trimmedMessages[removeIdx].content.length;
         trimmedMessages.splice(removeIdx, 1);
       }
 
-      // Also truncate individual observation messages that are too long
+      // Truncate individually long messages
       trimmedMessages = trimmedMessages.map(m => {
         if (m.content.length > 6000 && (m.content.startsWith('<observation>') || m.role === 'user')) {
           return { ...m, content: m.content.slice(0, 6000) + '\n...[truncated]' };
@@ -277,19 +301,133 @@ export async function runAgentLoop(
         return m;
       });
 
+      // Build messages array for the API, including tool calling metadata
       const chatMessages = [
-        { role: 'system', content: buildSystemPrompt() + personaPrompt + workspaceContext },
-        ...trimmedMessages.map(m => ({ role: m.role as any, content: m.content }))
+        { role: 'system' as const, content: buildSystemPrompt() + personaPrompt + workspaceContext },
+        ...trimmedMessages.map(m => {
+          const msg: any = { role: m.role, content: m.content };
+          if (m.toolCalls) msg.tool_calls = m.toolCalls;
+          if (m.toolCallId) msg.tool_call_id = m.toolCallId;
+          if (m.name) msg.name = m.name;
+          return msg;
+        })
       ];
 
-      let response: string;
+      let chatResponse: ChatResponse;
+
       if (context.createChat) {
-        response = await context.createChat({ model: provider.model, messages: chatMessages }, provider);
+        // Tauri backend path — pass tools for native calling
+        chatResponse = await context.createChat(
+          { model: provider.model, messages: chatMessages, tools: nativeTools },
+          provider
+        );
       } else {
-        response = await providerRegistry[provider.kind].createChat({ model: provider.model, messages: chatMessages }, provider);
+        // Browser-side provider path
+        chatResponse = await providerRegistry[provider.kind].createChat(
+          { model: provider.model, messages: chatMessages, tools: nativeTools },
+          provider
+        );
       }
 
-      if (!response || response.trim().length === 0) {
+      const responseContent = chatResponse.content || '';
+      const responseToolCalls = chatResponse.toolCalls;
+
+      // ─── NATIVE TOOL CALLS ───
+      // If the model used native function calling, handle it directly
+      if (responseToolCalls && responseToolCalls.length > 0) {
+        // Store the assistant message with tool_calls for conversation history
+        currentMessages.push({
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: responseContent,
+          createdAt: new Date().toISOString(),
+          toolCalls: responseToolCalls as NativeToolCall[],
+        });
+
+        // Log any text content the model included alongside tool calls
+        if (responseContent.trim()) {
+          logs.push({
+            id: crypto.randomUUID(),
+            kind: 'info',
+            title: 'Agent thinking',
+            detail: responseContent.slice(0, 300),
+            createdAt: new Date().toISOString()
+          });
+        }
+
+        // Execute each tool call
+        for (const tc of responseToolCalls) {
+          const toolId = tc.function.name;
+          let toolArgs: any;
+          try {
+            toolArgs = JSON.parse(tc.function.arguments);
+          } catch {
+            toolArgs = {};
+          }
+
+          const tool = builtInTools.find(t => t.id === toolId);
+          const toolLabel = tool?.label ?? toolId;
+
+          logs.push({
+            id: crypto.randomUUID(),
+            kind: 'tool',
+            title: toolLabel,
+            detail: toolId === 'write-file'
+              ? `Writing ${toolArgs.path} (${(toolArgs.content?.length || 0)} chars)`
+              : toolId === 'terminal-exec'
+              ? `$ ${toolArgs.command}`
+              : `${JSON.stringify(toolArgs).slice(0, 250)}`,
+            createdAt: new Date().toISOString()
+          });
+
+          try {
+            const observation = await executeTool(toolId, toolArgs);
+            const obsText = typeof observation === 'string' ? observation : JSON.stringify(observation, null, 2);
+
+            logs.push({
+              id: crypto.randomUUID(),
+              kind: 'success',
+              title: `${toolLabel} ✓`,
+              detail: obsText.slice(0, 400),
+              createdAt: new Date().toISOString()
+            });
+
+            // Feed result back as a tool role message with the matching tool_call_id
+            currentMessages.push({
+              id: crypto.randomUUID(),
+              role: 'tool',
+              content: obsText.slice(0, 8000),
+              createdAt: new Date().toISOString(),
+              toolCallId: tc.id,
+              name: toolId,
+            });
+          } catch (err: any) {
+            const errMsg = err.message || String(err);
+            logs.push({
+              id: crypto.randomUUID(),
+              kind: 'error',
+              title: `${toolLabel} failed`,
+              detail: errMsg,
+              createdAt: new Date().toISOString()
+            });
+
+            currentMessages.push({
+              id: crypto.randomUUID(),
+              role: 'tool',
+              content: `Error: ${errMsg}`,
+              createdAt: new Date().toISOString(),
+              toolCallId: tc.id,
+              name: toolId,
+            });
+          }
+        }
+
+        // Continue the loop — model needs to see tool results
+        continue;
+      }
+
+      // ─── TEXT RESPONSE (no native tool calls) ───
+      if (!responseContent || responseContent.trim().length === 0) {
         logs.push({
           id: crypto.randomUUID(),
           kind: 'error',
@@ -304,14 +442,14 @@ export async function runAgentLoop(
         };
       }
 
-      currentMessages.push({ id: crypto.randomUUID(), role: 'assistant', content: response, createdAt: new Date().toISOString() });
+      currentMessages.push({ id: crypto.randomUUID(), role: 'assistant', content: responseContent, createdAt: new Date().toISOString() });
 
-      // Parse tool call
-      let parsedCall = parseToolCall(response);
+      // ─── XML TOOL CALL PARSING (fallback for models without native tool calling) ───
+      let parsedCall = parseToolCall(responseContent);
       
       // Fallback: implicit file creation detection
       if (!parsedCall && loopCount <= 2) {
-        parsedCall = detectImplicitFileCreation(response, context.workspacePath);
+        parsedCall = detectImplicitFileCreation(responseContent, context.workspacePath);
         if (parsedCall) {
           logs.push({
             id: crypto.randomUUID(),
@@ -340,7 +478,6 @@ export async function runAgentLoop(
             createdAt: new Date().toISOString()
           });
 
-          // All tools auto-execute (none are guarded anymore)
           try {
             const observation = await executeTool(toolId, toolArgs);
             const obsText = typeof observation === 'string' ? observation : JSON.stringify(observation, null, 2);
@@ -385,7 +522,6 @@ export async function runAgentLoop(
             detail: `Model tried "${toolId}". Available: ${builtInTools.map(t => t.id).join(', ')}`,
             createdAt: new Date().toISOString()
           });
-          // Feed error back so model can correct
           currentMessages.push({
             id: crypto.randomUUID(),
             role: 'user',
@@ -433,8 +569,13 @@ export async function runAgentLoop(
     });
   }
 
+  // Find the last assistant message for the reply
+  const lastAssistantMsg = [...currentMessages].reverse().find(m => m.role === 'assistant');
+
   return {
-    reply: currentMessages[currentMessages.length - 1] ?? { id: crypto.randomUUID(), role: 'assistant', content: 'Agent stopped.', createdAt: now },
+    reply: lastAssistantMsg
+      ? { id: lastAssistantMsg.id, role: 'assistant', content: lastAssistantMsg.content, createdAt: lastAssistantMsg.createdAt }
+      : { id: crypto.randomUUID(), role: 'assistant', content: 'Agent stopped.', createdAt: now },
     logs,
     approvalRequests: []
   };

@@ -144,3 +144,68 @@ export const builtInTools: ToolDescriptor[] = [
     schema: '{"search": "old text or /regex/", "replace": "new text", "include": "*.ts", "path": "optional/subdir"}'
   },
 ];
+
+/**
+ * Convert builtInTools into the OpenAI function calling format.
+ * This lets models with native tool calling (e.g. openai/gpt-oss-120b)
+ * use their trained function-calling behavior.
+ */
+export function toOpenAITools(): Array<{
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, any>;
+  };
+}> {
+  return builtInTools.map(tool => {
+    // Parse the schema string into JSON Schema properties
+    let properties: Record<string, any> = {};
+    let required: string[] = [];
+
+    if (tool.schema) {
+      try {
+        const example = JSON.parse(tool.schema);
+        for (const [key, value] of Object.entries(example)) {
+          if (Array.isArray(value)) {
+            properties[key] = {
+              type: 'array',
+              description: `Parameter: ${key}`,
+              items: { type: 'object' }
+            };
+            // Arrays with content are likely required
+            required.push(key);
+          } else if (typeof value === 'boolean') {
+            properties[key] = { type: 'boolean', description: `Parameter: ${key}` };
+          } else if (typeof value === 'number') {
+            properties[key] = { type: 'integer', description: `Parameter: ${key}` };
+          } else if (typeof value === 'object' && value !== null) {
+            properties[key] = { type: 'object', description: `Parameter: ${key}` };
+          } else {
+            properties[key] = { type: 'string', description: `Parameter: ${key}` };
+            // String params with real-looking example values are likely required
+            if (typeof value === 'string' && !value.startsWith('optional')) {
+              required.push(key);
+            }
+          }
+        }
+      } catch {
+        // If schema parsing fails, use a permissive schema
+        properties = { args: { type: 'object', description: 'Tool arguments' } };
+      }
+    }
+
+    return {
+      type: 'function' as const,
+      function: {
+        name: tool.id,
+        description: tool.description,
+        parameters: {
+          type: 'object',
+          properties,
+          required,
+        }
+      }
+    };
+  });
+}
