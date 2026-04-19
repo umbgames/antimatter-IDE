@@ -51,6 +51,9 @@ export interface AgentMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   createdAt: string;
+  toolCalls?: any[];
+  toolCallId?: string;
+  name?: string;
 }
 
 export interface AgentActionLog {

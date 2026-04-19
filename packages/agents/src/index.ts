@@ -246,7 +246,7 @@ export async function runAgentLoop(
     toolCalls?: NativeToolCall[];
     toolCallId?: string;
     name?: string;
-  }> = [...context.messages.map(m => ({ ...m, toolCalls: undefined as NativeToolCall[] | undefined, toolCallId: undefined as string | undefined, name: undefined as string | undefined }))];
+  }> = [...context.messages.map(m => ({ ...m, toolCalls: m.toolCalls as NativeToolCall[] | undefined, toolCallId: m.toolCallId, name: m.name }))];
   const provider = context.provider;
 
   if (!provider) {
@@ -574,7 +574,14 @@ export async function runAgentLoop(
 
   return {
     reply: lastAssistantMsg
-      ? { id: lastAssistantMsg.id, role: 'assistant', content: lastAssistantMsg.content, createdAt: lastAssistantMsg.createdAt }
+      ? { 
+          id: lastAssistantMsg.id, 
+          role: 'assistant', 
+          content: lastAssistantMsg.content, 
+          createdAt: lastAssistantMsg.createdAt,
+          toolCalls: lastAssistantMsg.toolCalls
+        }
+
       : { id: crypto.randomUUID(), role: 'assistant', content: 'Agent stopped.', createdAt: now },
     logs,
     approvalRequests: []
