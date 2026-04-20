@@ -32,6 +32,13 @@ export const builtInTools: ToolDescriptor[] = [
     schema: '{"path": "file/path", "replacements": [{"search": "exact old text", "replace": "new text"}]}'
   },
   {
+    id: 'replace-lines',
+    label: 'Replace Lines',
+    description: 'Replace a specific range of lines in a file. Lines are 1-indexed. Use this for surgical edits without rewriting the entire file.',
+    risk: 'read-only',
+    schema: '{"path": "file/path", "start_line": 10, "end_line": 15, "replacement": "new code here"}'
+  },
+  {
     id: 'delete-file',
     label: 'Delete File',
     description: 'Delete a file or empty directory from the workspace.',

@@ -106,6 +106,9 @@ ${toolDocs}
 **Patch existing file (search and replace):**
 <tool_call id="patch-file">{"path": "C:/projects/myapp/src/main.ts", "replacements": [{"search": "console.log('old')", "replace": "console.log('new')"}]}</tool_call>
 
+**Surgically replace lines (by line number):**
+<tool_call id="replace-lines">{"path": "C:/projects/myapp/src/main.ts", "start_line": 24, "end_line": 24, "replacement": "    const formatted = format(data);"}</tool_call>
+
 **Fetch documentation from the web:**
 <tool_call id="fetch-url">{"url": "https://docs.example.com/api"}</tool_call>
 
