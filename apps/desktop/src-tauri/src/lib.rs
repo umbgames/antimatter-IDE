@@ -2,9 +2,17 @@ mod commands;
 mod models;
 mod storage;
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let lsp_state = commands::lsp::LspState {
+        process_map: Mutex::new(HashMap::new()),
+    };
+
     tauri::Builder::default()
+        .manage(lsp_state)
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
@@ -34,6 +42,8 @@ pub fn run() {
             commands::workspace::grep_search,
             commands::workspace::bulk_replace,
             commands::workspace::fetch_url,
+            commands::lsp::start_lsp,
+            commands::lsp::send_lsp_message,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Antimatter");
