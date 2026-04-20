@@ -143,20 +143,10 @@ export function App() {
   }, [activeFilePath, openFiles, saveFileLocallyMarked]);
 
   const closeActiveFile = useCallback(() => {
-    const state = useAppStore.getState();
-    const files = state.openFiles;
-    const activePath = state.activeFilePath;
-    if (!activePath || files.length === 0) return;
-    const idx = files.findIndex((f) => f.path === activePath);
-    const remaining = files.filter((f) => f.path !== activePath);
-    const nextActive = remaining.length > 0
-      ? remaining[Math.min(idx, remaining.length - 1)]?.path
-      : undefined;
-    useAppStore.setState({
-      openFiles: remaining,
-      activeFilePath: nextActive,
-      welcomeVisible: remaining.length === 0
-    });
+    const activePath = useAppStore.getState().activeFilePath;
+    if (activePath) {
+      useAppStore.getState().closeFile(activePath);
+    }
   }, []);
 
   const closeAllFiles = useCallback(() => {
@@ -252,7 +242,14 @@ export function App() {
       persona: state.activePersona,
       createChat: async (request: any, config: any) => {
         const tauri = await import('./lib/tauri');
-        return await tauri.chatWithProvider(config.id, request.messages, request.tools);
+        const mappedMessages = request.messages.map((m: any) => {
+          const msg: any = { role: m.role, content: m.content };
+          if (m.tool_calls) msg.toolCalls = m.tool_calls;
+          if (m.tool_call_id) msg.toolCallId = m.tool_call_id;
+          if (m.name) msg.name = m.name;
+          return msg;
+        });
+        return await tauri.chatWithProvider(config.id, mappedMessages, request.tools);
       }
     };
 
@@ -278,6 +275,20 @@ export function App() {
           }
           await tauri.writeWorkspaceFile(args.path, proposed);
           return `Successfully patched ${args.path}`;
+        }
+        case 'replace-lines': {
+          const original = await tauri.readWorkspaceFile(args.path);
+          const lines = original.split(/\r?\n/);
+          const startIdx = Math.max(0, (args.start_line || 1) - 1);
+          const endIdx = typeof args.end_line === 'number' ? Math.min(lines.length - 1, args.end_line - 1) : startIdx;
+          
+          if (startIdx >= lines.length) {
+            lines.push(args.replacement);
+          } else {
+            lines.splice(startIdx, Math.max(1, endIdx - startIdx + 1), args.replacement);
+          }
+          await tauri.writeWorkspaceFile(args.path, lines.join('\n'));
+          return `Successfully replaced lines ${startIdx + 1} to ${endIdx + 1} in ${args.path}`;
         }
         case 'delete-file':
           return await tauri.deleteWorkspaceFile(args.path);

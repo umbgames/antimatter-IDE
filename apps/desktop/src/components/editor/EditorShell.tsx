@@ -2,14 +2,19 @@ import Editor from '@monaco-editor/react';
 import type { OpenFile } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { chatWithProvider } from '@/lib/tauri';
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
+import { X } from 'lucide-react';
+import { LspClient } from '@/lib/LspClient';
 
 export function EditorShell() {
-  const { openFiles, activeFilePath, theme, openFile, updateOpenFileContent, selectedProviderId, inlineCompletionsEnabled } = useAppStore();
+  const { openFiles, activeFilePath, theme, openFile, closeFile, updateOpenFileContent, selectedProviderId, inlineCompletionsEnabled, workspacePath } = useAppStore();
   const completionProviderRef = useRef<any>(null);
+  const hoverProviderRef = useRef<any>(null);
+  const lspCompleteRef = useRef<any>(null);
   const activeFile = openFiles.find((file: OpenFile) => file.path === activeFilePath) ?? openFiles[0];
+  const lspClients = useRef<Map<string, LspClient>>(new Map());
 
-  const handleEditorMount = (_editor: any, monaco: any) => {
+  const handleEditorWillMount = (monaco: any) => {
     monaco.editor.defineTheme('antimatter-dark', {
       base: 'vs-dark',
       inherit: true,
@@ -27,6 +32,9 @@ export function EditorShell() {
         'editor.background': '#ffffff',
       }
     });
+  };
+
+  const handleEditorMount = (_editor: any, monaco: any) => {
 
     if (completionProviderRef.current) {
        completionProviderRef.current.dispose();
@@ -75,6 +83,137 @@ export function EditorShell() {
       },
       freeInlineCompletions: () => {}
     });
+
+    // Clean previous hover provider
+    if (hoverProviderRef.current) {
+        hoverProviderRef.current.dispose();
+    }
+
+    // Register dynamic hover provider using active LSP clients
+    hoverProviderRef.current = monaco.languages.registerHoverProvider('*', {
+      provideHover: async (model: any, position: any) => {
+        const lang = model.getLanguageId();
+        const client = lspClients.current.get(lang);
+        if (!client) return null;
+
+        try {
+          const res = await client.getHover(model.uri.path, position.lineNumber - 1, position.column - 1);
+          if (res && res.contents) {
+            return {
+              contents: Array.isArray(res.contents) ? res.contents : [res.contents]
+            };
+          }
+        } catch {
+           return null;
+        }
+        return null;
+      }
+    });
+
+    if (lspCompleteRef.current) lspCompleteRef.current.dispose();
+
+    lspCompleteRef.current = monaco.languages.registerCompletionItemProvider('*', {
+      triggerCharacters: ['.', ':', '>', '/', '"', "'"],
+      provideCompletionItems: async (model: any, position: any) => {
+        const lang = model.getLanguageId();
+        const client = lspClients.current.get(lang);
+        if (!client) return { items: [] };
+
+        try {
+          const res = await client.getCompletions(model.uri.path, position.lineNumber - 1, position.column - 1);
+          if (res && res.items) {
+             const items = res.items.map((item: any) => ({
+               label: item.label,
+               kind: item.kind, // Maps to monaco.languages.CompletionItemKind
+               insertText: item.insertText || item.label,
+               documentation: item.documentation,
+               detail: item.detail,
+               range: {
+                  startLineNumber: position.lineNumber,
+                  startColumn: position.column,
+                  endLineNumber: position.lineNumber,
+                  endColumn: position.column
+               }
+             }));
+             return { items };
+          }
+        } catch {
+        }
+        return { items: [] };
+      }
+    });
+
+    // Try starting Emmet (Phase 4)
+    // @ts-ignore
+    import('emmet-monaco-es').then(({ emmetHTML, emmetCSS, emmetJSX }) => {
+       emmetHTML(monaco);
+       emmetCSS(monaco);
+       emmetJSX(monaco);
+    }).catch(() => {
+       console.warn('emmet-monaco-es not installed yet. Skipping.');
+    });
+
+    // Register Git Gutter and Formatter hooks
+    _editor.addCommand(monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF, async () => {
+       // Phase 3 native formatter via Tauri
+       const activeModel = _editor.getModel();
+       if (!activeModel) return;
+       const m_lang = activeModel.getLanguageId();
+       
+       const { executeTerminal } = await import('@/lib/tauri');
+       const ext = activeModel.uri.path.split('.').pop()?.toLowerCase();
+       let cmd = '';
+       if (m_lang === 'rust') cmd = `rustfmt "${activeModel.uri.path}"`;
+       else if (['ts', 'tsx', 'js', 'jsx', 'json', 'css', 'html'].includes(ext || '')) {
+           cmd = `npx prettier --write "${activeModel.uri.path}"`;
+       }
+       
+       if (cmd) {
+          try {
+             await executeTerminal({ cwd: workspacePath || '.', command: cmd });
+             // Reload file content gracefully into the model
+             const newContent = await (await import('@/lib/tauri')).readWorkspaceFile(activeModel.uri.path);
+             activeModel.setValue(newContent);
+          } catch(e) {
+             console.error("Format Failed", e);
+          }
+       }
+    });
+  };
+
+  useEffect(() => {
+    if (!workspacePath || !activeFile) return;
+
+    // Auto-spawn LSPs based on common languages
+    const lang = activeFile.language;
+    if (!lspClients.current.has(lang)) {
+        let binPath = '';
+        if (lang === 'rust') binPath = 'rust-analyzer';
+        else if (lang === 'python') binPath = 'pyright-langserver';
+        else if (lang === 'go') binPath = 'gopls';
+        
+        if (binPath) {
+            const client = new LspClient(lang, binPath, workspacePath);
+            lspClients.current.set(lang, client);
+            client.start().catch(console.error);
+        }
+    }
+
+    // Notify LSP of document switch
+    const client = lspClients.current.get(lang);
+    if (client) {
+        client.notifyDocumentOpened(activeFile.path, activeFile.content, 1);
+    }
+  }, [activeFile?.path, workspacePath]);
+
+  const handleEditorChange = (value: string | undefined) => {
+    updateOpenFileContent(activeFile.path, value ?? '');
+    
+    // Notify LSP
+    const client = lspClients.current.get(activeFile.language);
+    if (client) {
+        client.notifyDocumentChanged(activeFile.path, value ?? '', 2);
+    }
   };
 
   if (!activeFile) {
@@ -85,19 +224,28 @@ export function EditorShell() {
     <section className="panel editor-panel">
       <div className="tabs">
         {openFiles.map((file: OpenFile) => (
-          <button key={file.path} className={`tab ${file.path === activeFile.path ? 'active' : ''}`} onClick={() => openFile(file)}>
-            {file.name}
-            {file.dirty ? ' •' : ''}
-          </button>
+          <div key={file.path} className={`tab ${file.path === activeFile.path ? 'active' : ''}`} onClick={() => openFile(file)}>
+            <span className="tab-label">{file.name}{file.dirty ? ' •' : ''}</span>
+            <button 
+              className="tab-close-btn" 
+              onClick={(e) => { e.stopPropagation(); closeFile(file.path); }}
+              title="Close"
+            >
+              <X size={12} />
+            </button>
+          </div>
         ))}
       </div>
       <div className="editor-surface">
         <Editor
+          path={activeFile.path}
           height="100%"
           language={activeFile.language}
           value={activeFile.content}
           theme={theme === 'dark' ? 'antimatter-dark' : 'antimatter-light'}
-          onChange={(value) => updateOpenFileContent(activeFile.path, value ?? '')}
+          loading={<div className="spinner-tiny" style={{ margin: 'auto' }} />}
+          beforeMount={handleEditorWillMount}
+          onChange={handleEditorChange}
           onMount={handleEditorMount}
           options={{
             minimap: { enabled: false },

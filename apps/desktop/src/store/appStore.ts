@@ -57,6 +57,7 @@ interface AppState {
   setWorkspacePath: (path?: string) => void;
   setWorkspaceEntries: (entries: WorkspaceEntry[]) => void;
   openFile: (file: OpenFile) => void;
+  closeFile: (path: string) => void;
   updateOpenFileContent: (path: string, content: string) => void;
   saveFileLocallyMarked: (path: string) => void;
   setAgentDockSide: (side: AgentDockSide) => void;
@@ -141,6 +142,23 @@ export const useAppStore = create<AppState>((set) => ({
         openFiles: exists ? state.openFiles : [...state.openFiles, file],
         activeFilePath: file.path,
         welcomeVisible: false
+      };
+    }),
+  closeFile: (path) =>
+    set((state) => {
+      const idx = state.openFiles.findIndex((f) => f.path === path);
+      if (idx === -1) return state;
+      const remaining = state.openFiles.filter((f) => f.path !== path);
+      let nextActive = state.activeFilePath;
+      if (state.activeFilePath === path) {
+        nextActive = remaining.length > 0
+          ? remaining[Math.min(idx, remaining.length - 1)]?.path
+          : undefined;
+      }
+      return {
+        openFiles: remaining,
+        activeFilePath: nextActive,
+        welcomeVisible: remaining.length === 0 && !nextActive
       };
     }),
   updateOpenFileContent: (path, content) =>

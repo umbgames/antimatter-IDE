@@ -53,9 +53,22 @@ export function BottomPanel() {
         const child = await cmd.spawn();
         childRef.current = child;
 
-        // Route keystrokes properly
+        term.writeln(`\x1B[32mAntimatter Terminal (Fallback Shell)\x1B[0m`);
+        term.writeln(`\x1B[34mRunning in: ${workspacePath || 'Global'}\x1B[0m\r\n`);
+
+        // Route keystrokes properly with local echo
         term.onData((data) => {
-          child.write(data);
+          const code = data.charCodeAt(0);
+          if (code === 13) { // Enter
+            term.write('\r\n');
+            child.write('\r\n');
+          } else if (code === 127 || code === 8) { // Backspace
+            term.write('\b \b');
+            child.write('\b');
+          } else {
+            term.write(data);
+            child.write(data);
+          }
         });
 
       } catch (e: any) {
