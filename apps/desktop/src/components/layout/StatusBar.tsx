@@ -1,3 +1,4 @@
+import { Loader2 } from 'lucide-react';
 import type { ProviderConfig } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 
@@ -6,7 +7,7 @@ interface Props {
 }
 
 export function StatusBar({ onToggleProviders }: Props) {
-  const { theme, workspacePath, openFiles, providerConfigs, selectedProviderId } = useAppStore();
+  const { theme, workspacePath, openFiles, providerConfigs, selectedProviderId, indexingProgress } = useAppStore();
   const provider = providerConfigs.find((entry: ProviderConfig) => entry.id === selectedProviderId);
 
   return (
@@ -14,6 +15,14 @@ export function StatusBar({ onToggleProviders }: Props) {
       <div className="statusbar__left">
         <span>{theme === 'dark' ? 'Dark' : 'Light'} theme</span>
         <span>{workspacePath ?? 'No workspace open'}</span>
+        {indexingProgress.status !== 'idle' && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {indexingProgress.status === 'indexing' && <Loader2 size={12} className="spin" />}
+            {indexingProgress.status === 'indexing' 
+              ? `Indexing: ${indexingProgress.current}/${indexingProgress.total} files` 
+              : `Indexed ${indexingProgress.total} files`}
+          </span>
+        )}
       </div>
       <div className="statusbar__right">
         <span>{openFiles.length} open tabs</span>

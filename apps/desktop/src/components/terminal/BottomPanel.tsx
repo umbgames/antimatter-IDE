@@ -11,6 +11,20 @@ export function BottomPanel() {
   const fitAddonRef = useRef<FitAddon | null>(null);
   const childRef = useRef<any>(null);
 
+  // Subscribe to agent output
+  useEffect(() => {
+    const unsub = useAppStore.subscribe(
+      (state) => state.terminalOutputQueue,
+      (queue) => {
+        if (queue.length > 0 && xtermRef.current) {
+          queue.forEach(text => xtermRef.current!.write(text));
+          useAppStore.getState().clearTerminalOutputQueue();
+        }
+      }
+    );
+    return unsub;
+  }, []);
+
   useEffect(() => {
     if (!terminalRef.current || xtermRef.current) return;
 

@@ -1501,3 +1501,12 @@ textarea { resize: vertical; }
   font-size: 10px;
   margin: 0 1px;
 }
+
+/* ─── AI Code Editor Edits ─── */
+.ai-added-line {
+  background-color: rgba(46, 160, 67, 0.15) !important;
+}
+
+.ai-added-line-gutter {
+  border-left: 3px solid #3fb950 !important;
+}

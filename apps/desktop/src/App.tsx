@@ -29,6 +29,36 @@ import {
   readDirectory
 } from './lib/tauri';
 
+async function calculateLineDiff(oldStr: string, newStr: string) {
+  const { diffLines } = await import('diff');
+  const changes = diffLines(oldStr, newStr);
+  const addedLines: number[] = [];
+  const removedLines: number[] = [];
+  let addedCount = 0;
+  let removedCount = 0;
+  
+  let currentLinePos = 1;
+
+  for (const part of changes) {
+    const lineCount = part.count || 0;
+    if (part.added) {
+      for (let i = 0; i < lineCount; i++) {
+        addedLines.push(currentLinePos + i);
+      }
+      addedCount += lineCount;
+      currentLinePos += lineCount;
+    } else if (part.removed) {
+      removedCount += lineCount;
+      // removed lines don't exist in the current document, so we can't easily mark them on a specific line number safely for background colors without jumping through hoops, 
+      // but we maintain the count for the summary.
+    } else {
+      currentLinePos += lineCount;
+    }
+  }
+
+  return { addedLines, removedLines, addedCount, removedCount };
+}
+
 export function App() {
   // Use specific selectors to prevent re-rendering when logs/messages change
   const theme = useAppStore(s => s.theme);
@@ -82,24 +112,47 @@ export function App() {
            await new Promise(r => setTimeout(r, 1000));
            if (version !== indexingVersion.current) return;
 
-           const files = workspaceEntries
-             .filter((e: any) => !e.isDirectory && !e.path.includes('.git') && 
-               (e.path.endsWith('.ts') || e.path.endsWith('.tsx') || e.path.endsWith('.rs') || e.path.endsWith('.js') || e.path.endsWith('.py')))
-             .slice(0, 50);
-
            const tauri = await import('./lib/tauri');
-           const fileData = await Promise.all(
-             files.map(async (f: any) => ({
-               path: f.path,
-               content: await tauri.readWorkspaceFile(f.path)
-             }))
-           );
+           
+           // Fetch all files recursively to index them all
+           useAppStore.getState().setIndexingProgress({ status: 'indexing', current: 0, total: 0 });
+           
+           const allFiles = await tauri.listDirectoryRecursive(workspacePath, 5);
+           const validFiles = allFiles
+             .filter((e: any) => !e.isDirectory && !e.path.includes('.git') && !e.path.includes('node_modules') && 
+               (e.path.endsWith('.ts') || e.path.endsWith('.tsx') || e.path.endsWith('.rs') || e.path.endsWith('.js') || e.path.endsWith('.py')));
+
+           if (validFiles.length === 0) {
+             useAppStore.getState().setIndexingProgress({ status: 'ready', current: 0, total: 0 });
+             return;
+           }
+
+           useAppStore.getState().setIndexingProgress({ status: 'indexing', current: 0, total: validFiles.length });
+
+           // Load content in batches to prevent UI block
+           const fileData = [];
+           const batchSize = 10;
+           for (let i = 0; i < validFiles.length; i += batchSize) {
+             if (version !== indexingVersion.current) return; // aborted
+             const batch = validFiles.slice(i, i + batchSize);
+             const batchData = await Promise.all(
+               batch.map(async (f: any) => ({
+                 path: f.path,
+                 content: await tauri.readWorkspaceFile(f.path)
+               }))
+             );
+             fileData.push(...batchData);
+           }
            
            if (version === indexingVersion.current) {
-             await codebaseIndexer.index(fileData);
+             await codebaseIndexer.index(fileData, (current, total) => {
+               useAppStore.getState().setIndexingProgress({ status: 'indexing', current, total });
+             });
+             useAppStore.getState().setIndexingProgress({ status: 'ready', current: validFiles.length, total: validFiles.length });
            }
          } catch (err) {
            console.error('Indexing failed:', err);
+           useAppStore.getState().setIndexingProgress({ status: 'idle', current: 0, total: 0 });
          }
        };
        runIndexing();
@@ -233,6 +286,7 @@ export function App() {
     appendMessage(userMessage);
     setApprovalRequests([]);
     setIsAgentRunning(true);
+    useAppStore.getState().clearAIEdits();
 
     const state = useAppStore.getState();
     const context = {
@@ -240,6 +294,9 @@ export function App() {
       messages: [...state.messages],
       workspacePath: state.workspacePath || undefined,
       persona: state.activePersona,
+      onTokensUsed: (tokens: number) => {
+        useAppStore.getState().incrementSessionTokens(tokens);
+      },
       createChat: async (request: any, config: any) => {
         const tauri = await import('./lib/tauri');
         const mappedMessages = request.messages.map((m: any) => {
@@ -258,13 +315,35 @@ export function App() {
       const currentPath = useAppStore.getState().workspacePath;
       
       switch (toolId) {
-        case 'read-file':
-          return await tauri.readWorkspaceFile(args.path);
-        case 'write-file':
-          await tauri.writeWorkspaceFile(args.path, args.content || '');
+        case 'read-file': {
+          let content = await tauri.readWorkspaceFile(args.path);
+          if (args.start_line !== undefined || args.end_line !== undefined) {
+             const lines = content.split(/\r?\n/);
+             const start = Math.max(0, (args.start_line || 1) - 1);
+             const end = args.end_line ? Math.min(lines.length, args.end_line) : lines.length;
+             content = lines.slice(start, end).join('\n');
+             content += `\n\n[Displaying lines ${start + 1} to ${end} of ${lines.length}. Use start_line/end_line to read more.]`;
+          } else if (content.length > 20000) {
+             const lines = content.split(/\r?\n/);
+             content = lines.slice(0, 400).join('\n');
+             content += `\n\n[File truncated at 400 lines because it is too large (${lines.length} total lines). Pass start_line and end_line arguments to read the rest, or use grep-search.]`;
+          }
+          return content;
+        }
+        case 'write-file': {
+          let original = '';
+          try { original = await tauri.readWorkspaceFile(args.path); } catch { /* new file */ }
+          const proposed = args.content || '';
+          await tauri.writeWorkspaceFile(args.path, proposed);
+          
+          const diffResult = await calculateLineDiff(original, proposed);
+          useAppStore.getState().updateAIEdits(args.path, diffResult);
+          
           return `Successfully wrote to ${args.path}`;
+        }
         case 'patch-file': {
-          const original = await tauri.readWorkspaceFile(args.path);
+          let original = '';
+          try { original = await tauri.readWorkspaceFile(args.path); } catch { /* new file */ }
           let proposed = original;
           if (Array.isArray(args.replacements)) {
             for (const r of args.replacements) {
@@ -274,6 +353,10 @@ export function App() {
             }
           }
           await tauri.writeWorkspaceFile(args.path, proposed);
+          
+          const diffResult = await calculateLineDiff(original, proposed);
+          useAppStore.getState().updateAIEdits(args.path, diffResult);
+          
           return `Successfully patched ${args.path}`;
         }
         case 'replace-lines': {
@@ -287,7 +370,12 @@ export function App() {
           } else {
             lines.splice(startIdx, Math.max(1, endIdx - startIdx + 1), args.replacement);
           }
-          await tauri.writeWorkspaceFile(args.path, lines.join('\n'));
+          const proposed = lines.join('\n');
+          await tauri.writeWorkspaceFile(args.path, proposed);
+          
+          const diffResult = await calculateLineDiff(original, proposed);
+          useAppStore.getState().updateAIEdits(args.path, diffResult);
+          
           return `Successfully replaced lines ${startIdx + 1} to ${endIdx + 1} in ${args.path}`;
         }
         case 'delete-file':
@@ -310,9 +398,38 @@ export function App() {
           return await tauri.grepSearch(currentPath, args.pattern, args.include, args.path);
         case 'query-codebase':
           return await codebaseIndexer.search(args.query);
-        case 'terminal-exec':
+        case 'terminal-exec': {
           if (!currentPath) throw new Error('No workspace open');
-          return await tauri.executeTerminal({ cwd: currentPath, command: args.command });
+          useAppStore.getState().setBottomPanelTab('terminal');
+          
+          return new Promise(async (resolve, reject) => {
+            const { Command } = await import('@tauri-apps/plugin-shell');
+            const cmd = Command.create('powershell', ['-NoLogo', '-Command', args.command], { cwd: currentPath });
+            
+            let output = '';
+            useAppStore.getState().appendTerminalOutput(`\x1B[33m\r\n> ${args.command}\x1B[0m\r\n`);
+
+            cmd.stdout.on('data', (line: string) => {
+              output += line + '\n';
+              useAppStore.getState().appendTerminalOutput(line + '\r\n');
+            });
+            cmd.stderr.on('data', (line: string) => {
+              output += line + '\n';
+              useAppStore.getState().appendTerminalOutput(`\x1B[31m${line}\x1B[0m\r\n`);
+            });
+            
+            cmd.on('close', ({ code }: any) => {
+              useAppStore.getState().appendTerminalOutput(`\x1B[90mExit code: ${code}\x1B[0m\r\n`);
+              resolve(output || 'Command executed successfully with no output.');
+            });
+            
+            cmd.on('error', (err: any) => {
+               reject(err);
+            });
+            
+            cmd.spawn().catch(reject);
+          });
+        }
         case 'analyze-file':
           return await tauri.analyzeFile(args.path);
         case 'analyze-project':

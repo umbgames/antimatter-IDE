@@ -13,6 +13,10 @@ export function EditorShell() {
   const lspCompleteRef = useRef<any>(null);
   const activeFile = openFiles.find((file: OpenFile) => file.path === activeFilePath) ?? openFiles[0];
   const lspClients = useRef<Map<string, LspClient>>(new Map());
+  const monacoEditorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+  const decorationsCollectionRef = useRef<any>(null);
+  const aiEdits = useAppStore(s => s.aiEdits);
 
   const handleEditorWillMount = (monaco: any) => {
     monaco.editor.defineTheme('antimatter-dark', {
@@ -35,6 +39,8 @@ export function EditorShell() {
   };
 
   const handleEditorMount = (_editor: any, monaco: any) => {
+    monacoEditorRef.current = _editor;
+    monacoRef.current = monaco;
 
     if (completionProviderRef.current) {
        completionProviderRef.current.dispose();
@@ -216,6 +222,30 @@ export function EditorShell() {
     }
   };
 
+  useEffect(() => {
+    if (!monacoEditorRef.current || !monacoRef.current || !activeFile) return;
+
+    if (!decorationsCollectionRef.current) {
+      decorationsCollectionRef.current = monacoEditorRef.current.createDecorationsCollection();
+    }
+
+    const fileEdits = aiEdits[activeFile.path];
+    if (fileEdits && fileEdits.addedLines.length > 0) {
+      const monaco = monacoRef.current;
+      const decorations = fileEdits.addedLines.map((line: number) => ({
+        range: new monaco.Range(line, 1, line, 1),
+        options: {
+          isWholeLine: true,
+          className: 'ai-added-line',
+          linesDecorationsClassName: 'ai-added-line-gutter',
+        }
+      }));
+      decorationsCollectionRef.current.set(decorations);
+    } else {
+      decorationsCollectionRef.current.clear();
+    }
+  }, [aiEdits, activeFile?.path]);
+
   if (!activeFile) {
     return <div className="panel editor-panel empty-state">Open a file to start editing.</div>;
   }
@@ -248,7 +278,7 @@ export function EditorShell() {
           onChange={handleEditorChange}
           onMount={handleEditorMount}
           options={{
-            minimap: { enabled: false },
+            minimap: { enabled: true },
             fontSize: 14,
             smoothScrolling: true,
             padding: { top: 16 },

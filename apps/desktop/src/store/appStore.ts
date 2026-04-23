@@ -23,6 +23,13 @@ export interface PaletteItem {
   action: () => void;
 }
 
+export type AIEditStats = { 
+  addedLines: number[];
+  removedLines: number[];
+  addedCount: number;
+  removedCount: number;
+};
+
 interface AppState {
   theme: ThemeMode;
   workspacePath: string | null;
@@ -51,6 +58,10 @@ interface AppState {
   // ─── New State ───
   isAgentRunning: boolean;
   fileWatcherEnabled: boolean;
+  sessionTokens: number;
+  indexingProgress: { status: 'idle' | 'indexing' | 'ready'; current: number; total: number };
+  terminalOutputQueue: string[];
+  aiEdits: Record<string, AIEditStats>;
 
   // ─── Actions ───
   setTheme: (theme: ThemeMode) => void;
@@ -85,6 +96,12 @@ interface AppState {
   setIsAgentRunning: (running: boolean) => void;
   clearConversation: () => void;
   setFileWatcherEnabled: (enabled: boolean) => void;
+  incrementSessionTokens: (tokens: number) => void;
+  setIndexingProgress: (progress: { status: 'idle' | 'indexing' | 'ready'; current: number; total: number }) => void;
+  appendTerminalOutput: (text: string) => void;
+  clearTerminalOutputQueue: () => void;
+  updateAIEdits: (path: string, stats: Partial<AIEditStats>) => void;
+  clearAIEdits: () => void;
 }
 
 export const initialProviders: ProviderConfig[] = providerDefaults.map((provider, index) => ({
@@ -129,6 +146,10 @@ export const useAppStore = create<AppState>((set) => ({
   // ─── New defaults ───
   isAgentRunning: false,
   fileWatcherEnabled: true,
+  sessionTokens: 0,
+  indexingProgress: { status: 'idle', current: 0, total: 0 },
+  terminalOutputQueue: [],
+  aiEdits: {},
 
   // ─── Actions ───
   setTheme: (theme) => set({ theme }),
@@ -214,9 +235,29 @@ export const useAppStore = create<AppState>((set) => ({
     messages: [INITIAL_SYSTEM_MESSAGE],
     actionLogs: [],
     approvalRequests: [],
-    isAgentRunning: false
+    isAgentRunning: false,
+    sessionTokens: 0
   }),
   setFileWatcherEnabled: (fileWatcherEnabled) => set({ fileWatcherEnabled }),
+  incrementSessionTokens: (tokens) => set((s) => ({ sessionTokens: s.sessionTokens + tokens })),
+  setIndexingProgress: (indexingProgress) => set({ indexingProgress }),
+  appendTerminalOutput: (text) => set((state) => ({ terminalOutputQueue: [...state.terminalOutputQueue, text] })),
+  clearTerminalOutputQueue: () => set({ terminalOutputQueue: [] }),
+  updateAIEdits: (path, stats) => set((state) => {
+    const existing = state.aiEdits[path] || { addedLines: [], removedLines: [], addedCount: 0, removedCount: 0 };
+    return {
+      aiEdits: {
+        ...state.aiEdits,
+        [path]: {
+          addedLines: stats.addedLines || existing.addedLines,
+          removedLines: stats.removedLines || existing.removedLines,
+          addedCount: existing.addedCount + (stats.addedCount || 0),
+          removedCount: existing.removedCount + (stats.removedCount || 0)
+        }
+      }
+    };
+  }),
+  clearAIEdits: () => set({ aiEdits: {} }),
 }));
 
 export function deriveSettingsFromStore(state: AppState): AppSettings {

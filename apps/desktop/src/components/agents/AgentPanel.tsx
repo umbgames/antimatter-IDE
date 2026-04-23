@@ -3,7 +3,7 @@ import type { AgentActionLog, AgentMessage, ApprovalRequest, ProviderConfig } fr
 import { useAppStore } from '@/store/appStore';
 import { DiffPreviewCard } from './DiffPreviewCard';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { Send, Bot, User, TerminalSquare, Trash2, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { Send, Bot, User, TerminalSquare, Trash2, ChevronDown, ChevronRight, Loader2, ListTodo, FileCode2 } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface Props {
@@ -17,7 +17,7 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
     messages, actionLogs, approvalRequests, providerConfigs,
     selectedProviderId, setSelectedProviderId,
     activePersona, setActivePersona,
-    isAgentRunning, clearConversation
+    isAgentRunning, clearConversation, sessionTokens, aiEdits
   } = useAppStore();
 
   const [prompt, setPrompt] = useState('');
@@ -76,6 +76,11 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
           )}
         </div>
         <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          {sessionTokens > 0 && (
+            <div className="token-counter" style={{ fontSize: '11px', color: 'var(--text-muted)', marginRight: '4px' }} title="Tokens used this session">
+              {sessionTokens.toLocaleString()} tkns
+            </div>
+          )}
           <button
             className="button subtle"
             style={{ padding: '2px 6px', fontSize: '11px' }}
@@ -135,6 +140,14 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
                   displayContent = displayContent.replace(/<thought>[\s\S]*/, '').trim();
                 }
 
+                // Handle plan blocks
+                const planMatch = content.match(/<plan>([\s\S]*?)<\/plan>/);
+                const isPlanning = content.includes('<plan>') && !content.includes('</plan>');
+                displayContent = displayContent.replace(/<plan>[\s\S]*?<\/plan>/g, '').trim();
+                if (isPlanning) {
+                  displayContent = displayContent.replace(/<plan>[\s\S]*/, '').trim();
+                }
+
                 // Hide observation/error messages from display
                 if (content.startsWith('<observation>') || content.startsWith('<error>')) {
                   return null;
@@ -171,6 +184,17 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
                           <summary>💭 Thought Process</summary>
                           <div className="thought-content">{thoughtMatch[1].trim()}</div>
                         </details>
+                      )}
+                      {(planMatch || isPlanning) && (
+                        <div className="strategy-board" style={{ margin: '8px 0', padding: '12px', background: 'var(--surface-sunken)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: 'var(--accent)', fontWeight: 600, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            <ListTodo size={14} /> Active Strategy
+                            {isPlanning && <Loader2 size={12} className="spin" style={{ marginLeft: 'auto' }} />}
+                          </div>
+                          <div className="strategy-content" style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                            <MarkdownRenderer content={planMatch ? planMatch[1].trim() : content.split('<plan>')[1].trim()} />
+                          </div>
+                        </div>
                       )}
                       {isThinking && (
                         <div className="thinking-indicator">
@@ -253,6 +277,29 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
           </div>
         )}
 
+        {/* AI File Edits Summary */}
+        {Object.keys(aiEdits).length > 0 && (
+          <div className="agent-section">
+            <strong style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <FileCode2 size={12} /> AI Edits Summary
+            </strong>
+            <div className="log-list" style={{ marginTop: '4px' }}>
+              {Object.entries(aiEdits).map(([path, stats]: any) => {
+                const fileName = path.split(/[\\/]/).pop();
+                return (
+                  <div key={path} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', background: 'var(--bg-muted)', padding: '6px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                    <span title={path} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px', color: 'var(--text-secondary)' }}>{fileName}</span>
+                    <div style={{ display: 'flex', gap: '6px', fontWeight: 500 }}>
+                      <span style={{ color: 'var(--success)' }}>+{stats.addedCount}</span>
+                      <span style={{ color: 'var(--danger)' }}>-{stats.removedCount}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Approval Requests */}
         {approvalRequests.length > 0 && (
           <div className="agent-section">
@@ -266,22 +313,20 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
 
       {/* Compose Area */}
       <div className="agent-compose">
-        <textarea
-          ref={textareaRef}
-          value={prompt}
-          onChange={handleTextareaChange}
-          onKeyDown={handleKeyDown}
-          placeholder={isAgentRunning ? 'Agent is working...' : 'Ask anything... (Enter to send, Shift+Enter for newline)'}
-          rows={1}
-          disabled={isAgentRunning}
-          className="agent-textarea"
-        />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span className="helper-text">
-            {selectedProviderId ? '' : '⚠ Select a provider first'}
-          </span>
+        <div style={{ position: 'relative' }}>
+          <textarea
+            ref={textareaRef}
+            value={prompt}
+            onChange={handleTextareaChange}
+            onKeyDown={handleKeyDown}
+            placeholder={isAgentRunning ? 'Agent is working...' : 'Ask anything... (Enter to send, Shift+Enter for newline)'}
+            rows={1}
+            disabled={isAgentRunning}
+            className="agent-textarea"
+            style={{ paddingRight: '40px' }}
+          />
           <button
-            className="button primary"
+            className="chat-send-icon-btn"
             disabled={!prompt.trim() || !selectedProviderId || isAgentRunning}
             onClick={() => {
               void onSubmit(prompt);
@@ -290,13 +335,28 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
                 textareaRef.current.style.height = 'auto';
               }
             }}
+            style={{
+              position: 'absolute',
+              right: '8px',
+              bottom: '8px',
+              background: 'transparent',
+              border: 'none',
+              padding: '4px',
+              cursor: (!prompt.trim() || !selectedProviderId || isAgentRunning) ? 'default' : 'pointer',
+              color: (!prompt.trim() || !selectedProviderId || isAgentRunning) ? 'var(--text-muted)' : 'var(--accent)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: (!prompt.trim() || !selectedProviderId || isAgentRunning) ? 0.5 : 1
+            }}
           >
-            {isAgentRunning ? (
-              <><Loader2 size={14} className="spin" style={{ marginRight: '6px' }} /> Working...</>
-            ) : (
-              <><Send size={14} style={{ marginRight: '6px' }} /> Send</>
-            )}
+            {isAgentRunning ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
           </button>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+          <span className="helper-text" style={{ fontSize: '11px', color: 'var(--danger)' }}>
+            {selectedProviderId ? '' : '⚠ Select a provider first'}
+          </span>
         </div>
       </div>
     </aside>
