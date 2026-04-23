@@ -14,10 +14,10 @@ export function BottomPanel() {
   // Subscribe to agent output
   useEffect(() => {
     const unsub = useAppStore.subscribe(
-      (state) => state.terminalOutputQueue,
-      (queue) => {
+      (state) => {
+        const queue = state.terminalOutputQueue;
         if (queue.length > 0 && xtermRef.current) {
-          queue.forEach(text => xtermRef.current!.write(text));
+          queue.forEach((text: string) => xtermRef.current!.write(text));
           useAppStore.getState().clearTerminalOutputQueue();
         }
       }

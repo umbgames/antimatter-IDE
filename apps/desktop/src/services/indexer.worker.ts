@@ -12,7 +12,7 @@ async function initPipeline() {
 }
 
 function chunkContent(content: string, path: string) {
-  const chunks = [];
+  const chunks: Array<{ path: string; text: string }> = [];
   const chunkSize = 800; // slightly larger chunks
   const overlap = 200;
   
@@ -36,12 +36,12 @@ self.onmessage = async (e: MessageEvent) => {
     const { files } = payload;
     await initPipeline();
 
-    const allChunks = [];
+    const allChunks: Array<{ path: string; text: string }> = [];
     for (const file of files) {
       allChunks.push(...chunkContent(file.content, file.path));
     }
 
-    let processedChunks = [];
+    let processedChunks: any[] = [];
     
     // Process in batches
     const batchSize = 8;
