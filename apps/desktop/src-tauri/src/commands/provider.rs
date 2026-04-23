@@ -254,6 +254,9 @@ async fn extract_chat_response(response: reqwest::Response) -> Result<ChatRespon
         })
         .filter(|v: &Vec<ToolCall>| !v.is_empty());
 
+    let usage: Option<crate::models::TokenUsage> = json.get("usage")
+        .and_then(|u| serde_json::from_value(u.clone()).ok());
+
     if content.is_none() && tool_calls.is_none() {
         return Err("Provider response contained neither content nor tool_calls.".to_string());
     }
@@ -261,6 +264,7 @@ async fn extract_chat_response(response: reqwest::Response) -> Result<ChatRespon
     Ok(ChatResponse {
         content,
         tool_calls,
+        usage,
     })
 }
 
@@ -301,9 +305,18 @@ fn normalize_role(role: &str) -> &'static str {
 }
 
 fn compact_error_body(body: &str) -> String {
-    let collapsed = body.split_whitespace().collect::<Vec<_>>().join(" ");
-    if collapsed.len() > 240 {
-        format!("{}…", &collapsed[..240])
+    let msg = if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(body) {
+        if let Some(err) = parsed.get("error").and_then(|e| e.get("message")).and_then(|m| m.as_str()) {
+            err.to_string()
+        } else {
+            body.to_string()
+        }
+    } else {
+        body.to_string()
+    };
+    let collapsed = msg.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.len() > 600 {
+        format!("{}…", &collapsed[..600])
     } else if collapsed.is_empty() {
         "No response body was returned.".into()
     } else {

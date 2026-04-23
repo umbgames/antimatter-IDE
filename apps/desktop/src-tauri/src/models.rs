@@ -104,9 +104,18 @@ pub struct ChatMessage {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct TokenUsage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatResponse {
     pub content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
+    pub usage: Option<TokenUsage>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
