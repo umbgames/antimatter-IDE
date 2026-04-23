@@ -12,6 +12,7 @@ export interface AgentRunContext {
     request: { model: string; messages: { role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }[]; tools?: any[] },
     config: ProviderConfig
   ) => Promise<ChatResponse>;
+  onTokensUsed?: (tokens: number) => void;
 }
 
 export interface AgentRunResult {
@@ -62,10 +63,16 @@ You operate inside a desktop IDE and can directly read, write, and modify files,
 1. **Act, don't describe.** When asked to create a file, write code, or run a command — DO IT using the available tools. Never just show code in your response without also writing it to a file.
 2. **Use tools aggressively.** Call tools whenever you need to interact with the workspace. You can call tools either via native function calling OR via the XML format below — use whichever your architecture supports.
 3. **Think briefly, then act.** Start each response with a one-line thought, then immediately use a tool.
-4. **Be precise with paths.** Use the workspace path as the root. If the workspace is at \`C:/projects/myapp\`, a file at \`src/index.ts\` should be \`C:/projects/myapp/src/index.ts\`.
+4. **Be precise with paths.** Use the workspace path as the root. If the workspace is at `C:/projects/myapp`, a file at `src/index.ts` should be `C:/projects/myapp/src/index.ts`.
 5. **Use terminal-exec freely.** You have direct terminal access. Use it for: installing packages (npm/pip/cargo), running builds, running tests, git commands, file system operations, or anything else needed.
-6. **Analyze before modifying.** When working on existing code, use read-file or analyze-file first to understand the current state before making changes.
-7. **Professional tone.** Be concise, technical, and helpful. No unnecessary chatter.
+6. **Analyze before modifying.** When working on existing code, use `analyze-file` or `grep-search` instead of reading entire files when looking for functions or lines.
+7. **Always plan your work.** When given a complex or multi-step task, start your response with a structured \`<plan>\` block outlining the steps you will take as a markdown checklist. For Example:
+   <plan>
+   - [ ] Step 1 description
+   - [ ] Step 2 description
+   </plan>
+   You MUST include this block before you run any tools for anything other than short direct questions.
+8. **Professional tone.** Be concise, technical, and helpful. No unnecessary chatter.
 
 ## Tool Call Format (XML Fallback)
 
@@ -85,8 +92,8 @@ ${toolDocs}
 **Create a file:**
 <tool_call id="write-file">{"path": "C:/projects/myapp/index.html", "content": "<!DOCTYPE html>\\n<html>\\n<head><title>Hello</title></head>\\n<body><h1>Hello World</h1></body>\\n</html>"}</tool_call>
 
-**Read a file:**
-<tool_call id="read-file">{"path": "C:/projects/myapp/src/main.ts"}</tool_call>
+**Read a file (paginated):**
+<tool_call id="read-file">{"path": "C:/projects/myapp/src/main.ts", "start_line": 1, "end_line": 200}</tool_call>
 
 **Run terminal command:**
 <tool_call id="terminal-exec">{"command": "npm install express"}</tool_call>
@@ -286,7 +293,7 @@ export async function runAgentLoop(
     loopCount++;
     try {
       // ─── Context Window Management ───
-      const MAX_CONTEXT_CHARS = 48000;
+      const MAX_CONTEXT_CHARS = 24000;
       let trimmedMessages = [...currentMessages];
       let totalChars = trimmedMessages.reduce((sum, m) => sum + m.content.length, 0);
       
@@ -298,8 +305,8 @@ export async function runAgentLoop(
 
       // Truncate individually long messages
       trimmedMessages = trimmedMessages.map(m => {
-        if (m.content.length > 6000 && (m.content.startsWith('<observation>') || m.role === 'user')) {
-          return { ...m, content: m.content.slice(0, 6000) + '\n...[truncated]' };
+        if (m.content.length > 4000 && (m.content.startsWith('<observation>') || m.role === 'user')) {
+          return { ...m, content: m.content.slice(0, 4000) + '\n...[truncated]' };
         }
         return m;
       });
@@ -334,6 +341,10 @@ export async function runAgentLoop(
 
       const responseContent = chatResponse.content || '';
       const responseToolCalls = chatResponse.toolCalls;
+
+      if (chatResponse.usage?.totalTokens && context.onTokensUsed) {
+        context.onTokensUsed(chatResponse.usage.totalTokens);
+      }
 
       // ─── NATIVE TOOL CALLS ───
       // If the model used native function calling, handle it directly

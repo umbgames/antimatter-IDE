@@ -1,4 +1,4 @@
-import type { ProviderConfig, ProviderKind, ProviderTestResult } from '@antimatter/shared';
+import type { ProviderConfig, ProviderKind, ProviderTestResult, TokenUsage } from '@antimatter/shared';
 
 export interface ProviderContext {
   apiKey?: string;
@@ -37,6 +37,7 @@ export interface ChatRequest {
 export interface ChatResponse {
   content: string | null;
   toolCalls: ChatToolCall[] | null;
+  usage?: TokenUsage;
 }
 
 export interface ProviderClient {
@@ -196,7 +197,16 @@ class OpenAICompatibleProviderClient implements ProviderClient {
       throw new Error(`${this.label} response contained neither content nor tool_calls.`);
     }
 
-    return { content, toolCalls };
+    let usage: TokenUsage | undefined;
+    if (data?.usage) {
+      usage = {
+        promptTokens: data.usage.prompt_tokens,
+        completionTokens: data.usage.completion_tokens,
+        totalTokens: data.usage.total_tokens
+      };
+    }
+
+    return { content, toolCalls, usage };
   }
 
   private resolveBaseUrl(config: ProviderConfig, context?: ProviderContext): string {

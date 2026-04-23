@@ -56,6 +56,12 @@ export interface AgentMessage {
   name?: string;
 }
 
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
 export interface AgentActionLog {
   id: string;
   kind: 'plan' | 'tool' | 'approval' | 'info' | 'error' | 'success';

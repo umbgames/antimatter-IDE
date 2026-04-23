@@ -13,9 +13,9 @@ export const builtInTools: ToolDescriptor[] = [
   {
     id: 'read-file',
     label: 'Read File',
-    description: 'Read a file from the workspace. Returns the full text content.',
+    description: 'Read a file from the workspace. Use start_line and end_line to paginate large files.',
     risk: 'read-only',
-    schema: '{"path": "relative/or/absolute/path"}'
+    schema: '{"path": "relative/or/absolute/path", "start_line": "optional", "end_line": "optional"}'
   },
   {
     id: 'write-file',
