@@ -96,9 +96,30 @@ export const builtInTools: ToolDescriptor[] = [
   {
     id: 'terminal-exec',
     label: 'Run Terminal Command',
-    description: 'Execute a shell command in the workspace directory. Use for: installing packages, running builds, running tests, git operations, or any CLI task. Commands run in PowerShell on Windows, sh on Linux/Mac.',
+    description: 'Execute a shell command in the workspace directory. Blocks until the command finishes. Use for: installing packages, running builds, running short tests, git operations, or any CLI task. Commands run in PowerShell on Windows, sh on Linux/Mac.',
     risk: 'read-only',
     schema: '{"command": "npm install express"}'
+  },
+  {
+    id: 'run-background-command',
+    label: 'Run Background Command',
+    description: 'Execute a long-running shell command in the background (like dev servers). Returns a jobId immediately. Use check-command to see its status and output.',
+    risk: 'read-only',
+    schema: '{"command": "npm run dev"}'
+  },
+  {
+    id: 'check-command',
+    label: 'Check Command Status',
+    description: 'Check the status and recent output of a background command started with run-background-command.',
+    risk: 'read-only',
+    schema: '{"jobId": "the-job-id"}'
+  },
+  {
+    id: 'read-console',
+    label: 'Read Console',
+    description: 'Read the recent output of the main user-facing terminal console. Useful for checking the status of user-initiated commands or servers.',
+    risk: 'read-only',
+    schema: '{}'
   },
 
   // ─── Analysis ───
