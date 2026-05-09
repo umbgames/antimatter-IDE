@@ -145,6 +145,22 @@ export const builtInTools: ToolDescriptor[] = [
     schema: '{}'
   },
 
+  // ─── Agent Ops ───
+  {
+    id: 'delegate-task',
+    label: 'Delegate Task',
+    description: 'Delegate a specific sub-task to a specialized sub-agent (e.g. engineer, qa, architect). The sub-agent runs independently and returns a final report or result.',
+    risk: 'read-only',
+    schema: '{"persona": "engineer", "task": "Write the test suite for src/index.ts"}'
+  },
+  {
+    id: 'capture-screen',
+    label: 'Capture Screen',
+    description: 'Take a screenshot of the user\'s primary display. Useful for visual debugging, checking UI layout, or reading errors. Returns a base64 encoded PNG image string.',
+    risk: 'read-only',
+    schema: '{}'
+  },
+
   // ─── Web / Fetch ───
   {
     id: 'fetch-url',

@@ -10,9 +10,11 @@ export interface AgentRunContext {
   persona?: 'engineer' | 'architect' | 'qa';
   createChat?: (
     request: { model: string; messages: { role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }[]; tools?: any[] },
-    config: ProviderConfig
+    config: ProviderConfig,
+    onStreamUpdate?: (content: string) => void
   ) => Promise<ChatResponse>;
   onTokensUsed?: (tokens: number) => void;
+  onStreamUpdate?: (content: string) => void;
 }
 
 export interface AgentRunResult {
@@ -293,23 +295,35 @@ export async function runAgentLoop(
     loopCount++;
     try {
       // ─── Context Window Management ───
-      const MAX_CONTEXT_CHARS = 128000;
-      let trimmedMessages = [...currentMessages];
-      let totalChars = trimmedMessages.reduce((sum, m) => sum + m.content.length, 0);
-      
-      while (totalChars > MAX_CONTEXT_CHARS && trimmedMessages.length > 3) {
-        const removeIdx = Math.min(1, trimmedMessages.length - 2);
-        totalChars -= trimmedMessages[removeIdx].content.length;
-        trimmedMessages.splice(removeIdx, 1);
+      // Smartly chunk and aggressively prune context based on provider limits
+      let MAX_CONTEXT_CHARS = 128000;
+      let MAX_MESSAGE_CHARS = 32000;
+
+      if (provider.kind === 'groq') {
+        // Groq free tiers have strict 8K TPM limits.
+        // We chunk the data tightly: ~5000 tokens total context, ~1500 tokens max per message.
+        MAX_CONTEXT_CHARS = 20000; 
+        MAX_MESSAGE_CHARS = 6000;
       }
 
-      // Truncate individually long messages
+      let trimmedMessages = [...currentMessages];
+      
+      // Truncate individually long messages first
       trimmedMessages = trimmedMessages.map(m => {
-        if (m.content.length > 32000 && (m.content.startsWith('<observation>') || m.role === 'user')) {
-          return { ...m, content: m.content.slice(0, 32000) + '\n...[truncated]' };
+        if (m.content && m.content.length > MAX_MESSAGE_CHARS && (m.content.startsWith('<observation>') || m.role === 'user' || m.role === 'tool')) {
+          return { ...m, content: m.content.slice(0, MAX_MESSAGE_CHARS) + '\n...[truncated by smart chunking to respect provider rate limits]' };
         }
         return m;
       });
+
+      let totalChars = trimmedMessages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+      
+      // Drop older context if still over limit
+      while (totalChars > MAX_CONTEXT_CHARS && trimmedMessages.length > 2) {
+        const removeIdx = Math.min(1, trimmedMessages.length - 2);
+        totalChars -= (trimmedMessages[removeIdx].content?.length || 0);
+        trimmedMessages.splice(removeIdx, 1);
+      }
 
       // Build messages array for the API, including tool calling metadata
       const chatMessages = [
@@ -329,7 +343,8 @@ export async function runAgentLoop(
         // Tauri backend path — pass tools for native calling
         chatResponse = await context.createChat(
           { model: provider.model, messages: chatMessages, tools: nativeTools },
-          provider
+          provider,
+          context.onStreamUpdate
         );
       } else {
         // Browser-side provider path
@@ -406,15 +421,37 @@ export async function runAgentLoop(
               createdAt: new Date().toISOString()
             });
 
+            let finalContent = obsText;
+            if (!obsText.startsWith('data:image/')) {
+              finalContent = obsText.slice(0, 8000);
+            }
+
             // Feed result back as a tool role message with the matching tool_call_id
-            currentMessages.push({
-              id: crypto.randomUUID(),
-              role: 'tool',
-              content: obsText.slice(0, 8000),
-              createdAt: new Date().toISOString(),
-              toolCallId: tc.id,
-              name: toolId,
-            });
+            if (obsText.startsWith('data:image/')) {
+               currentMessages.push({
+                 id: crypto.randomUUID(),
+                 role: 'tool',
+                 content: 'Screenshot captured successfully. I have appended the image to the context window.',
+                 createdAt: new Date().toISOString(),
+                 toolCallId: tc.id,
+                 name: toolId,
+               });
+               currentMessages.push({
+                 id: crypto.randomUUID(),
+                 role: 'user',
+                 content: finalContent,
+                 createdAt: new Date().toISOString(),
+               });
+            } else {
+               currentMessages.push({
+                 id: crypto.randomUUID(),
+                 role: 'tool',
+                 content: finalContent,
+                 createdAt: new Date().toISOString(),
+                 toolCallId: tc.id,
+                 name: toolId,
+               });
+            }
           } catch (err: any) {
             const errMsg = err.message || String(err);
             logs.push({
@@ -504,10 +541,15 @@ export async function runAgentLoop(
               createdAt: new Date().toISOString()
             });
 
+            let finalContent = obsText;
+            if (!obsText.startsWith('data:image/')) {
+               finalContent = `<observation>\n${obsText.slice(0, 8000)}\n</observation>`;
+            }
+            
             currentMessages.push({
                id: crypto.randomUUID(),
                role: 'user',
-               content: `<observation>\n${obsText.slice(0, 8000)}\n</observation>`,
+               content: finalContent,
                createdAt: new Date().toISOString()
             });
             continue;
