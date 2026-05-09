@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { MenuDropdown, type MenuItem } from './MenuDropdown';
 import { useAppStore } from '@/store/appStore';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import logo from '@/assets/logo.svg';
 
 interface Props {
   onOpenSettings: () => void;
@@ -203,7 +204,9 @@ export function Toolbar({
   return (
     <div className="toolbar" data-tauri-drag-region>
       <div className="toolbar__brand" data-tauri-drag-region>
-        <div className="brand-mark">A</div>
+        <div className="brand-mark">
+          <img src={logo} alt="Antimatter" />
+        </div>
       </div>
       <nav className="toolbar__menus" data-tauri-drag-region>
         {menus.map((menu) => (

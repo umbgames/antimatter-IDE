@@ -3,7 +3,8 @@ import type { AgentActionLog, AgentMessage, ApprovalRequest, ProviderConfig } fr
 import { useAppStore } from '@/store/appStore';
 import { DiffPreviewCard } from './DiffPreviewCard';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { Send, Bot, User, TerminalSquare, Trash2, ChevronDown, ChevronRight, Loader2, ListTodo, FileCode2 } from 'lucide-react';
+import { Send, User, TerminalSquare, Trash2, ChevronDown, ChevronRight, ListTodo, FileCode2 } from 'lucide-react';
+import logo from '@/assets/logo.svg';
 import { clsx } from 'clsx';
 
 interface Props {
@@ -66,11 +67,17 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
     <aside className="panel agent-panel">
       <div className="panel__header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Bot size={16} className="text-secondary" />
+          <div className="brand-mark" style={{ width: '16px', height: '16px' }}>
+             <img src={logo} alt="Antimatter" />
+          </div>
           <h3>Agent</h3>
           {isAgentRunning && (
             <div className="agent-running-badge">
-              <Loader2 size={12} className="spin" />
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="spin">
+                <circle cx="12" cy="12" r="10" stroke="rgba(99, 102, 241, 0.2)" strokeWidth="2" />
+                <path d="M12 2C6.48 2 2 6.48 2 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="12" cy="2" r="2" fill="#ec4899" />
+              </svg>
               <span>Working</span>
             </div>
           )}
@@ -121,7 +128,7 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
             {displayMessages.length === 0 ? (
                <div className="empty-state compact">
                  <div style={{ textAlign: 'center' }}>
-                   <Bot size={32} style={{ opacity: 0.3, marginBottom: '8px' }} />
+                   <img src={logo} alt="Antimatter" style={{ width: '48px', height: '48px', opacity: 0.8, marginBottom: '16px' }} />
                    <p>How can I help you today?</p>
                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
                      I can create files, run commands, analyze code, and more.
@@ -170,7 +177,11 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
                   >
                     <header className="message-header">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {isAssistant ? <Bot size={12} /> : <User size={12} />}
+                        {isAssistant ? (
+                          <div style={{ width: '12px', height: '12px' }}>
+                            <img src={logo} alt="A" style={{ width: '100%', height: '100%' }} />
+                          </div>
+                        ) : <User size={12} />}
                         <span>{isError ? 'Error' : isAssistant ? 'Antimatter' : 'You'}</span>
                       </div>
                       <span className="message-time">
@@ -189,7 +200,12 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
                         <div className="strategy-board" style={{ margin: '8px 0', padding: '12px', background: 'var(--surface-sunken)', borderRadius: '6px', border: '1px solid var(--border)' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: 'var(--accent)', fontWeight: 600, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                             <ListTodo size={14} /> Active Strategy
-                            {isPlanning && <Loader2 size={12} className="spin" style={{ marginLeft: 'auto' }} />}
+                            {isPlanning && (
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="spin" style={{ marginLeft: 'auto' }}>
+                                <circle cx="12" cy="12" r="10" stroke="rgba(99, 102, 241, 0.2)" strokeWidth="2" />
+                                <path d="M12 2C6.48 2 2 6.48 2 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                              </svg>
+                            )}
                           </div>
                           <div className="strategy-content" style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
                             <MarkdownRenderer content={planMatch ? planMatch[1].trim() : content.split('<plan>')[1].trim()} />
@@ -198,7 +214,11 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
                       )}
                       {isThinking && (
                         <div className="thinking-indicator">
-                          <Loader2 size={12} className="spin" /> Thinking...
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="spin">
+                            <circle cx="12" cy="12" r="10" stroke="rgba(99, 102, 241, 0.2)" strokeWidth="2" />
+                            <path d="M12 2C6.48 2 2 6.48 2 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          </svg>
+                          Thinking...
                         </div>
                       )}
                       {displayContent && (
@@ -217,7 +237,9 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
               <div className="message message--assistant message--streaming">
                 <header className="message-header">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Bot size={12} />
+                    <div style={{ width: '12px', height: '12px' }}>
+                      <img src={logo} alt="A" style={{ width: '100%', height: '100%' }} />
+                    </div>
                     <span>Antimatter</span>
                   </div>
                 </header>
@@ -350,7 +372,12 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
               opacity: (!prompt.trim() || !selectedProviderId || isAgentRunning) ? 0.5 : 1
             }}
           >
-            {isAgentRunning ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+            {isAgentRunning ? (
+               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="spin">
+                <circle cx="12" cy="12" r="10" stroke="rgba(99, 102, 241, 0.2)" strokeWidth="2" />
+                <path d="M12 2C6.48 2 2 6.48 2 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            ) : <Send size={16} />}
           </button>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>

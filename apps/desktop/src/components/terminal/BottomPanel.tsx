@@ -35,7 +35,7 @@ export function BottomPanel() {
       theme: {
         background: '#08090d',
         foreground: '#c8d0e0',
-        cursor: '#4d8eff'
+        cursor: '#6366f1'
       },
       convertEol: true
     });

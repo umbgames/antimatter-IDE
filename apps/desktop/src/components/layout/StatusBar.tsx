@@ -1,4 +1,3 @@
-import { Loader2 } from 'lucide-react';
 import type { ProviderConfig } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 
@@ -17,7 +16,13 @@ export function StatusBar({ onToggleProviders }: Props) {
         <span>{workspacePath ?? 'No workspace open'}</span>
         {indexingProgress.status !== 'idle' && (
           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            {indexingProgress.status === 'indexing' && <Loader2 size={12} className="spin" />}
+            {indexingProgress.status === 'indexing' && (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="spin">
+                <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.4)" strokeWidth="2" />
+                <path d="M12 2C6.48 2 2 6.48 2 12" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="12" cy="2" r="2" fill="#ec4899" />
+              </svg>
+            )}
             {indexingProgress.status === 'indexing' 
               ? `Indexing: ${indexingProgress.current}/${indexingProgress.total} files` 
               : `Indexed ${indexingProgress.total} files`}

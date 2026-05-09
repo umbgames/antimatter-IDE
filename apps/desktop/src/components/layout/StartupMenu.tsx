@@ -1,7 +1,8 @@
-import type { RecentProject } from '@antimatter/shared';
+this import type { RecentProject } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { openFolderPicker, readDirectory, saveRecentProject } from '@/lib/tauri';
 import { FolderOpen, FilePlus, HardDrive } from 'lucide-react';
+import logo from '@/assets/logo.svg';
 
 export function StartupMenu() {
   const recentProjects = useAppStore(s => s.recentProjects);
@@ -18,7 +19,7 @@ export function StartupMenu() {
         // Batch update workspace state
         setWorkspace(path, entries);
         await saveRecentProject(path);
-        
+
         // Refresh recent projects list
         const tauri = await import('@/lib/tauri');
         const updated = await tauri.getRecentProjects();
@@ -44,7 +45,7 @@ export function StartupMenu() {
     setWelcomeVisible(true);
   };
 
-  const sortedProjects = [...recentProjects].sort((a, b) => 
+  const sortedProjects = [...recentProjects].sort((a, b) =>
     new Date(b.lastOpenedAt).getTime() - new Date(a.lastOpenedAt).getTime()
   ).slice(0, 5);
 
@@ -53,9 +54,12 @@ export function StartupMenu() {
       <div className="modal startup-menu">
         <div className="hero-card">
           <div className="eyebrow">UMB GAMES AND TECHNOLOGY LTD</div>
+          <div className="startup-logo">
+            <img src={logo} alt="Antimatter Logo" style={{ width: '64px', height: '64px', marginBottom: '16px' }} />
+          </div>
           <h1>Antimatter</h1>
           <p>The local-first agentic IDE. Select a workspace to begin.</p>
-          
+
           <div className="row-actions startup-actions">
             <button className="button primary large" onClick={handleOpenFolder}>
               <FolderOpen size={16} /> Open Folder...
@@ -73,8 +77,8 @@ export function StartupMenu() {
           ) : (
             <div className="recent-list">
               {sortedProjects.map((project: RecentProject) => (
-                <button 
-                  key={project.path} 
+                <button
+                  key={project.path}
                   className="recent-item startup-recent-item"
                   onClick={() => handleRecentClick(project.path)}
                 >
