@@ -430,6 +430,51 @@ export function App() {
             cmd.spawn().catch(reject);
           });
         }
+        case 'run-background-command': {
+          if (!currentPath) throw new Error('No workspace open');
+          useAppStore.getState().setBottomPanelTab('terminal');
+          
+          const jobId = crypto.randomUUID().slice(0, 8);
+          const { Command } = await import('@tauri-apps/plugin-shell');
+          const cmd = Command.create('powershell', ['-NoLogo', '-Command', args.command], { cwd: currentPath });
+          
+          (window as any)[`_cmd_${jobId}`] = { status: 'running', output: '' };
+
+          useAppStore.getState().appendTerminalOutput(`\x1B[35m\r\n> [Bg ${jobId}] ${args.command}\x1B[0m\r\n`);
+
+          cmd.stdout.on('data', (line: string) => {
+            (window as any)[`_cmd_${jobId}`].output += line + '\n';
+            useAppStore.getState().appendTerminalOutput(`\x1B[35m[${jobId}]\x1B[0m ${line}\r\n`);
+          });
+          cmd.stderr.on('data', (line: string) => {
+            (window as any)[`_cmd_${jobId}`].output += line + '\n';
+            useAppStore.getState().appendTerminalOutput(`\x1B[31m[${jobId}] ${line}\x1B[0m\r\n`);
+          });
+          
+          cmd.on('close', ({ code }: any) => {
+            (window as any)[`_cmd_${jobId}`].status = 'done';
+            (window as any)[`_cmd_${jobId}`].code = code;
+            useAppStore.getState().appendTerminalOutput(`\x1B[90m[${jobId}] Exit code: ${code}\x1B[0m\r\n`);
+          });
+          
+          cmd.spawn().catch((err: any) => {
+            (window as any)[`_cmd_${jobId}`].status = 'error';
+            (window as any)[`_cmd_${jobId}`].output += '\nError: ' + err;
+          });
+          
+          return `Started background command with ID: ${jobId}. Use check-command to see status and output.`;
+        }
+        case 'check-command': {
+          const job = (window as any)[`_cmd_${args.jobId}`];
+          if (!job) return `No background command found with ID ${args.jobId}`;
+          return `Status: ${job.status}\nExit Code: ${job.code ?? 'N/A'}\n\nOutput:\n${job.output.slice(-10000)}`;
+        }
+        case 'read-console': {
+          if (typeof (window as any)._antimatterReadConsole === 'function') {
+            return (window as any)._antimatterReadConsole();
+          }
+          return 'Console read function not available. Ensure the terminal panel is open.';
+        }
         case 'analyze-file':
           return await tauri.analyzeFile(args.path);
         case 'analyze-project':

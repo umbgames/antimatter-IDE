@@ -51,43 +51,80 @@ export function BottomPanel() {
 
 
     const startShell = async () => {
-      try {
-        const cmd = Command.create('powershell', ['-NoLogo'], { cwd: workspacePath || undefined });
-        cmd.on('close', () => { term.writeln('\r\nConsole closed.'); });
-        cmd.on('error', err => { term.writeln('\r\n\x1B[31mConsole error: ' + err + '\x1B[0m'); });
-        
-        // Correct event patterns for Tauri v2 Shell plugin
-        cmd.stdout.on('data', (line) => {
-          term.write(line);
-        });
-        cmd.stderr.on('data', (line) => {
-          term.write(`\x1B[31m${line}\x1B[0m`);
-        });
+      let currentCwd = workspacePath || '';
+      term.writeln(`\x1B[32mAntimatter Terminal\x1B[0m`);
+      
+      let commandBuffer = '';
+      let isExecuting = false;
+      const prompt = () => term.write(`\r\n\x1B[32m${currentCwd || '~'}>\x1B[0m `);
+      prompt();
 
-        const child = await cmd.spawn();
-        childRef.current = child;
+      // Route keystrokes and execute commands
+      term.onData(async (data) => {
+        if (isExecuting) return; // Ignore input while command is running
 
-        term.writeln(`\x1B[32mAntimatter Terminal (Fallback Shell)\x1B[0m`);
-        term.writeln(`\x1B[34mRunning in: ${workspacePath || 'Global'}\x1B[0m\r\n`);
+        const code = data.charCodeAt(0);
+        if (code === 13) { // Enter
+          term.write('\r\n');
+          const cmdText = commandBuffer.trim();
+          commandBuffer = '';
 
-        // Route keystrokes properly with local echo
-        term.onData((data) => {
-          const code = data.charCodeAt(0);
-          if (code === 13) { // Enter
-            term.write('\r\n');
-            child.write('\r\n');
-          } else if (code === 127 || code === 8) { // Backspace
-            term.write('\b \b');
-            child.write('\b');
+          if (cmdText) {
+            isExecuting = true;
+            try {
+              // Handle CD explicitly to track the directory in the REPL
+              if (cmdText.trim().toLowerCase().startsWith('cd ')) {
+                const target = cmdText.trim().substring(3).trim();
+                const cdCmd = Command.create('powershell', ['-NoLogo', '-Command', `cd '${target}'; (Get-Location).Path`], { cwd: currentCwd || undefined });
+                const output = await cdCmd.execute();
+                if (output.code === 0) {
+                  currentCwd = output.stdout.trim();
+                } else {
+                  term.write(`\x1B[31m${output.stderr.trim()}\x1B[0m\r\n`);
+                }
+              } else {
+                const cmd = Command.create('powershell', ['-NoLogo', '-Command', cmdText], { cwd: currentCwd || undefined });
+                
+                cmd.stdout.on('data', (line) => {
+                  term.write(line + '\r\n');
+                });
+                cmd.stderr.on('data', (line) => {
+                  term.write(`\x1B[31m${line}\x1B[0m\r\n`);
+                });
+
+                const child = await cmd.spawn();
+                childRef.current = child;
+
+                await new Promise((resolve) => {
+                  cmd.on('close', ({ code }: any) => {
+                    if (code !== 0 && code !== null) {
+                      term.write(`\x1B[90m[Exit code: ${code}]\x1B[0m\r\n`);
+                    }
+                    resolve(null);
+                  });
+                  cmd.on('error', () => resolve(null));
+                });
+              }
+            } catch (e: any) {
+              term.write(`\r\n\x1B[31mError: ${e.message}\x1B[0m\r\n`);
+            } finally {
+              isExecuting = false;
+              childRef.current = null;
+              prompt();
+            }
           } else {
-            term.write(data);
-            child.write(data);
+            prompt();
           }
-        });
-
-      } catch (e: any) {
-        term.writeln(`\r\n\x1B[31mFailed to start shell: ${e.message}\x1B[0m`);
-      }
+        } else if (code === 127 || code === 8) { // Backspace
+          if (commandBuffer.length > 0) {
+            commandBuffer = commandBuffer.slice(0, -1);
+            term.write('\b \b');
+          }
+        } else {
+          commandBuffer += data;
+          term.write(data);
+        }
+      });
     };
     
     startShell();
@@ -97,8 +134,22 @@ export function BottomPanel() {
     };
     window.addEventListener('resize', handleResize);
 
+    // Expose to agent tools
+    (window as any)._antimatterReadConsole = () => {
+      if (!term) return 'Terminal not initialized.';
+      const buffer = term.buffer.active;
+      let text = '';
+      const start = Math.max(0, buffer.length - 200); // last 200 lines
+      for (let i = start; i < buffer.length; i++) {
+         const line = buffer.getLine(i);
+         if (line) text += line.translateToString(true) + '\n';
+      }
+      return text;
+    };
+
     return () => {
       window.removeEventListener('resize', handleResize);
+      delete (window as any)._antimatterReadConsole;
       if (childRef.current) {
          childRef.current.kill().catch(() => {});
       }
