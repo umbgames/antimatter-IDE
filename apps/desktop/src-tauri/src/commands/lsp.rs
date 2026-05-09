@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
 
 // A registry holding running LSP processes via their stdin
@@ -43,8 +43,8 @@ pub fn start_lsp(
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn LSP {}: {}", bin_path, e))?;
 
     let stdin = child.stdin.take().ok_or("Failed to open stdin")?;
-    let mut stdout = child.stdout.take().ok_or("Failed to open stdout")?;
-    let mut stderr = child.stderr.take().ok_or("Failed to open stderr")?;
+    let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
+    let stderr = child.stderr.take().ok_or("Failed to open stderr")?;
 
     map.insert(language.clone(), stdin);
 

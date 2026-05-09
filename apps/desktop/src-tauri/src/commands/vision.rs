@@ -12,7 +12,10 @@ pub async fn capture_screen() -> Result<String, String> {
     let image = screen.capture().map_err(|e| format!("Failed to capture screen: {}", e))?;
     
     // Compress it a bit (resize or directly encode to PNG)
-    let png_bytes = image.into_png().map_err(|e| format!("Failed to encode to PNG: {}", e))?;
+    let mut png_bytes: Vec<u8> = Vec::new();
+    let mut cursor = std::io::Cursor::new(&mut png_bytes);
+    image.write_to(&mut cursor, screenshots::image::ImageOutputFormat::Png)
+        .map_err(|e| format!("Failed to encode to PNG: {}", e))?;
     
     // Encode to base64
     let base64_image = BASE64.encode(png_bytes);
