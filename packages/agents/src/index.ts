@@ -293,7 +293,7 @@ export async function runAgentLoop(
     loopCount++;
     try {
       // ─── Context Window Management ───
-      const MAX_CONTEXT_CHARS = 24000;
+      const MAX_CONTEXT_CHARS = 128000;
       let trimmedMessages = [...currentMessages];
       let totalChars = trimmedMessages.reduce((sum, m) => sum + m.content.length, 0);
       
@@ -305,8 +305,8 @@ export async function runAgentLoop(
 
       // Truncate individually long messages
       trimmedMessages = trimmedMessages.map(m => {
-        if (m.content.length > 4000 && (m.content.startsWith('<observation>') || m.role === 'user')) {
-          return { ...m, content: m.content.slice(0, 4000) + '\n...[truncated]' };
+        if (m.content.length > 32000 && (m.content.startsWith('<observation>') || m.role === 'user')) {
+          return { ...m, content: m.content.slice(0, 32000) + '\n...[truncated]' };
         }
         return m;
       });

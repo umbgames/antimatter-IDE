@@ -1,5 +1,7 @@
 import type { ProviderConfig, ProviderKind, ProviderTestResult, TokenUsage } from '@antimatter/shared';
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export interface ProviderContext {
   apiKey?: string;
   baseUrl?: string;
@@ -78,6 +80,8 @@ class StubProviderClient implements ProviderClient {
 }
 
 class OpenAICompatibleProviderClient implements ProviderClient {
+  private globalWaitUntil = 0;
+
   constructor(
     public kind: ProviderKind,
     public label: string,
@@ -121,7 +125,6 @@ class OpenAICompatibleProviderClient implements ProviderClient {
       ...(this.kind !== 'local' && context?.apiKey ? { Authorization: `Bearer ${context.apiKey}` } : {})
     };
 
-    // Build the request body
     const body: Record<string, any> = {
       model: config.model,
       messages: request.messages,
@@ -134,16 +137,57 @@ class OpenAICompatibleProviderClient implements ProviderClient {
       body.tool_choice = 'auto';
     }
 
-    let response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body)
-    });
+    let retries = 0;
+    const maxRetries = 5;
 
-    if (!response.ok) {
+    while (true) {
+      // Check if we are in a global cooldown
+      const now = Date.now();
+      if (now < this.globalWaitUntil) {
+        const waitTime = this.globalWaitUntil - now;
+        console.info(`[${this.label}] In global cooldown. Waiting ${waitTime}ms...`);
+        await sleep(waitTime);
+      }
+
+      let response: Response;
+      try {
+        response = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body)
+        });
+      } catch (err: any) {
+        if (retries < maxRetries) {
+          retries++;
+          const waitTime = 1000 * Math.pow(2, retries);
+          console.warn(`[${this.label}] Network error. Retrying (${retries}/${maxRetries}) after ${waitTime}ms...`);
+          await sleep(waitTime);
+          continue;
+        }
+        throw err;
+      }
+
+      if (response.ok) {
+        const data = await response.json();
+        return this.extractResponse(data);
+      }
+
       const detail = await response.text();
 
-      // If tools caused a rejection, retry without them
+      // Handle Rate Limits (429)
+      if (response.status === 429 && retries < maxRetries) {
+        retries++;
+        const waitTime = this.parseRetryAfter(response, detail);
+        
+        // Set global cooldown for all requests to this provider
+        this.globalWaitUntil = Date.now() + waitTime;
+        
+        console.warn(`[${this.label}] Rate limit hit. Retrying (${retries}/${maxRetries}) after ${waitTime}ms...`);
+        await sleep(waitTime);
+        continue;
+      }
+
+      // Handle Tools Rejected (400)
       const isToolRejected = response.status === 400
         && request.tools && request.tools.length > 0
         && (detail.includes('tool') || detail.includes('function'));
@@ -153,23 +197,50 @@ class OpenAICompatibleProviderClient implements ProviderClient {
         delete fallbackBody.tools;
         delete fallbackBody.tool_choice;
 
-        response = await fetch(`${baseUrl}/chat/completions`, {
+        const fallbackResponse = await fetch(`${baseUrl}/chat/completions`, {
           method: 'POST',
           headers,
           body: JSON.stringify(fallbackBody)
         });
 
-        if (!response.ok) {
-          const retryDetail = await response.text();
-          throw new Error(`${this.label} returned ${response.status}: ${retryDetail || response.statusText}`);
+        if (fallbackResponse.ok) {
+          const data = await fallbackResponse.json();
+          return this.extractResponse(data);
         }
-      } else {
-        throw new Error(`${this.label} returned ${response.status}: ${detail || response.statusText}`);
+        
+        const retryDetail = await fallbackResponse.text();
+        throw new Error(`${this.label} returned ${fallbackResponse.status}: ${retryDetail || fallbackResponse.statusText}`);
       }
+
+      // Handle Transient Server Errors (5xx)
+      if (response.status >= 500 && retries < maxRetries) {
+        retries++;
+        const waitTime = 1000 * Math.pow(2, retries); // Exponential backoff
+        console.warn(`[${this.label}] Server error ${response.status}. Retrying (${retries}/${maxRetries}) after ${waitTime}ms...`);
+        await sleep(waitTime);
+        continue;
+      }
+
+      // Final error
+      throw new Error(`${this.label} returned ${response.status}: ${detail || response.statusText}`);
+    }
+  }
+
+  private parseRetryAfter(response: Response, body: string): number {
+    // 1. Check Retry-After header
+    const retryAfter = response.headers.get('Retry-After');
+    if (retryAfter) {
+      const seconds = parseInt(retryAfter, 10);
+      if (!isNaN(seconds)) return seconds * 1000;
     }
 
-    const data = await response.json();
-    return this.extractResponse(data);
+    // 2. Parse Groq-specific message: "Please try again in 20.6925s."
+    const match = body.match(/try again in ([\d.]+)s/);
+    if (match) {
+      return Math.ceil(parseFloat(match[1]) * 1000) + 500; // Add 500ms buffer
+    }
+
+    return 2000 * (1.5 ** (Math.random())); // Random 2-3s fallback
   }
 
   private extractResponse(data: any): ChatResponse {
