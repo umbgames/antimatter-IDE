@@ -70,7 +70,7 @@ self.onmessage = async (e: MessageEvent) => {
       });
     }
 
-    self.postMessage({ type: 'done', payload: processedChunks });
+    self.postMessage({ type: 'done', payload: processedChunks, id });
   }
   else if (type === 'search') {
     const { query, chunks, topK } = payload;
@@ -96,6 +96,6 @@ self.onmessage = async (e: MessageEvent) => {
       .slice(0, topK)
       .map((r: any) => r.chunk);
 
-    self.postMessage({ type: 'searchResults', payload: results });
+    self.postMessage({ type: 'searchResults', payload: results, id });
   }
 };

@@ -133,6 +133,7 @@ button { cursor: pointer; border: none; background: none; }
 .toolbar__window-controls {
   display: flex;
   height: 100%;
+  -webkit-app-region: no-drag;
 }
 .window-control {
   width: 46px;
@@ -143,6 +144,7 @@ button { cursor: pointer; border: none; background: none; }
   background: transparent;
   color: var(--text-secondary);
   transition: background 100ms;
+  -webkit-app-region: no-drag;
 }
 .window-control:hover {
   background: var(--bg-hover);
@@ -168,6 +170,7 @@ button { cursor: pointer; border: none; background: none; }
   border-radius: 0;
   transition: background var(--transition-fast), color var(--transition-fast);
   position: relative;
+  -webkit-app-region: no-drag;
 }
 .toolbar__menu-trigger:hover,
 .toolbar__menu-trigger.active {
@@ -177,8 +180,9 @@ button { cursor: pointer; border: none; background: none; }
 .toolbar__actions {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding-right: 4px;
+  gap: 4px;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
 }
 
 /* ─── Dropdown Menu ─── */

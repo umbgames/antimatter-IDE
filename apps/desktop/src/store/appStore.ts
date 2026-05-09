@@ -62,6 +62,8 @@ interface AppState {
   indexingProgress: { status: 'idle' | 'indexing' | 'ready'; current: number; total: number };
   terminalOutputQueue: string[];
   aiEdits: Record<string, AIEditStats>;
+  streamingMessage: string;
+  agentBackups: Record<string, string | null>;
 
   // ─── Actions ───
   setTheme: (theme: ThemeMode) => void;
@@ -102,6 +104,8 @@ interface AppState {
   clearTerminalOutputQueue: () => void;
   updateAIEdits: (path: string, stats: Partial<AIEditStats>) => void;
   clearAIEdits: () => void;
+  setStreamingMessage: (content: string) => void;
+  setAgentBackups: (backups: Record<string, string | null>) => void;
 }
 
 export const initialProviders: ProviderConfig[] = providerDefaults.map((provider, index) => ({
@@ -150,6 +154,8 @@ export const useAppStore = create<AppState>((set) => ({
   indexingProgress: { status: 'idle', current: 0, total: 0 },
   terminalOutputQueue: [],
   aiEdits: {},
+  streamingMessage: '',
+  agentBackups: {},
 
   // ─── Actions ───
   setTheme: (theme) => set({ theme }),
@@ -258,6 +264,8 @@ export const useAppStore = create<AppState>((set) => ({
     };
   }),
   clearAIEdits: () => set({ aiEdits: {} }),
+  setStreamingMessage: (streamingMessage) => set({ streamingMessage }),
+  setAgentBackups: (agentBackups) => set({ agentBackups }),
 }));
 
 export function deriveSettingsFromStore(state: AppState): AppSettings {

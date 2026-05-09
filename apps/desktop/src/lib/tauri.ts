@@ -121,6 +121,13 @@ export async function testProviderConnection(config: ProviderConfig, apiKey?: st
   return invoke('test_provider_connection', { config, apiKey });
 }
 
+export async function transcribeAudio(providerId: string, audioBytes: number[] | Uint8Array): Promise<string> {
+  // Tauri commands expect standard arrays for Vec<u8> if passed directly, 
+  // but Uint8Array is often serialized automatically. We map to Array just in case.
+  const bytes = audioBytes instanceof Uint8Array ? Array.from(audioBytes) : audioBytes;
+  return invoke('transcribe_audio', { providerId, audioBytes: bytes });
+}
+
 // ─── Git ───
 
 export async function getGitStatus(path: string): Promise<GitStatus> {
@@ -206,3 +213,19 @@ export async function chatWithProvider(
   return invoke('chat_with_provider', { providerId, messages, tools: tools ?? null });
 }
 
+import { Channel } from '@tauri-apps/api/core';
+
+export async function chatWithProviderStream(
+  providerId: string,
+  messages: RuntimeChatMessage[],
+  tools: any[] | undefined,
+  onChunk: (chunk: string) => void
+): Promise<ChatResponse> {
+  const onEvent = new Channel<string>();
+  onEvent.onmessage = onChunk;
+  return invoke('chat_with_provider_stream', { providerId, messages, tools: tools ?? null, onEvent });
+}
+
+export async function captureScreen(): Promise<string> {
+  return invoke('capture_screen');
+}

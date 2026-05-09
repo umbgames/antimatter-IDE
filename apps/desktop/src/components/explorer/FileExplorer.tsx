@@ -3,7 +3,50 @@ import type { WorkspaceEntry } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { openFileAsTab, readDirectory } from '@/lib/tauri';
 import { clsx } from 'clsx';
-import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, FolderOpen } from 'lucide-react';
+import { 
+  DiJavascript1, DiReact, DiHtml5, DiCss3, DiSass, DiLess, DiPython, DiJava, DiRust, DiGo, DiDatabase, DiSwift, DiRuby
+} from 'react-icons/di';
+import {
+  BiLogoTypescript, BiLogoVuejs, BiLogoMarkdown, BiImage, BiVideo, BiMusic
+} from 'react-icons/bi';
+import {
+  VscFileZip, VscTerminalCmd, VscFileBinary, VscFile, VscJson
+} from 'react-icons/vsc';
+
+function getFileIcon(fileName: string) {
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  if (!fileName.includes('.')) return <VscFile size={14} style={{ opacity: 0.8 }} />;
+  
+  switch (ext) {
+    case 'ts': return <BiLogoTypescript size={14} style={{ color: '#3178c6' }} />;
+    case 'tsx': return <DiReact size={14} style={{ color: '#61dafb' }} />;
+    case 'js': return <DiJavascript1 size={14} style={{ color: '#f7df1e' }} />;
+    case 'jsx': return <DiReact size={14} style={{ color: '#61dafb' }} />;
+    case 'vue': return <BiLogoVuejs size={14} style={{ color: '#4fc08d' }} />;
+    case 'html': return <DiHtml5 size={14} style={{ color: '#e34f26' }} />;
+    case 'css': return <DiCss3 size={14} style={{ color: '#1572b6' }} />;
+    case 'scss': return <DiSass size={14} style={{ color: '#cc6699' }} />;
+    case 'less': return <DiLess size={14} style={{ color: '#1d365d' }} />;
+    case 'json': case 'toml': case 'yaml': case 'yml': return <VscJson size={14} style={{ color: '#22c55e' }} />;
+    case 'png': case 'jpg': case 'jpeg': case 'gif': case 'svg': case 'webp': case 'ico': return <BiImage size={14} style={{ color: '#a855f7' }} />;
+    case 'mp4': case 'webm': case 'mkv': case 'avi': return <BiVideo size={14} style={{ color: '#ec4899' }} />;
+    case 'mp3': case 'wav': case 'ogg': case 'flac': return <BiMusic size={14} style={{ color: '#f43f5e' }} />;
+    case 'zip': case 'rar': case '7z': case 'tar': case 'gz': return <VscFileZip size={14} style={{ color: '#ef4444' }} />;
+    case 'md': case 'txt': case 'rtf': return <BiLogoMarkdown size={14} style={{ color: '#000000' }} />;
+    case 'py': return <DiPython size={14} style={{ color: '#3776ab' }} />;
+    case 'java': return <DiJava size={14} style={{ color: '#b07219' }} />;
+    case 'rs': return <DiRust size={14} style={{ color: '#dea584' }} />;
+    case 'go': return <DiGo size={14} style={{ color: '#00add8' }} />;
+    case 'rb': return <DiRuby size={14} style={{ color: '#701516' }} />;
+    case 'swift': return <DiSwift size={14} style={{ color: '#f05138' }} />;
+    case 'sh': case 'bat': case 'cmd': case 'ps1': return <VscTerminalCmd size={14} style={{ color: '#14b8a6' }} />;
+    case 'sql': case 'db': case 'sqlite': return <DiDatabase size={14} style={{ color: '#f97316' }} />;
+    case 'exe': case 'dll': case 'so': case 'dylib': return <VscFileBinary size={14} style={{ color: '#64748b' }} />;
+    default: return <VscFile size={14} style={{ opacity: 0.8 }} />;
+  }
+}
+
 
 interface ContextMenuConfig {
   x: number;
@@ -67,9 +110,9 @@ function FileTreeItem({ entry, depth, onContextMenu, refreshTrigger }: FileTreeI
             </span>
           ) : null}
           {entry.isDirectory ? (
-            isOpen ? <FolderOpen size={14} /> : <Folder size={14} />
+            isOpen ? <FolderOpen size={14} style={{ color: '#60a5fa' }} /> : <Folder size={14} style={{ color: '#60a5fa' }} />
           ) : (
-            <FileText size={14} style={{ opacity: 0.8 }} />
+            getFileIcon(entry.name)
           )}
         </span>
         <span className="tree-item__label">{entry.name}</span>

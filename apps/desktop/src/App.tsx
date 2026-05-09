@@ -287,6 +287,7 @@ export function App() {
     setApprovalRequests([]);
     setIsAgentRunning(true);
     useAppStore.getState().clearAIEdits();
+    useAppStore.getState().setAgentBackups({});
 
     const state = useAppStore.getState();
     const context = {
@@ -297,7 +298,10 @@ export function App() {
       onTokensUsed: (tokens: number) => {
         useAppStore.getState().incrementSessionTokens(tokens);
       },
-      createChat: async (request: any, config: any) => {
+      onStreamUpdate: (content: string) => {
+        useAppStore.getState().setStreamingMessage(content);
+      },
+      createChat: async (request: any, config: any, onStreamUpdate?: (content: string) => void) => {
         const tauri = await import('./lib/tauri');
         const mappedMessages = request.messages.map((m: any) => {
           const msg: any = { role: m.role, content: m.content };
@@ -306,13 +310,27 @@ export function App() {
           if (m.name) msg.name = m.name;
           return msg;
         });
+        if (onStreamUpdate) {
+          return await tauri.chatWithProviderStream(config.id, mappedMessages, request.tools, onStreamUpdate);
+        }
         return await tauri.chatWithProvider(config.id, mappedMessages, request.tools);
       }
     };
 
-    const result = await runAgentLoop(context, async (toolId, args) => {
+    const executeToolImpl = async (toolId: string, args: any): Promise<any> => {
       const tauri = await import('./lib/tauri');
       const currentPath = useAppStore.getState().workspacePath;
+      
+      const storeBackup = async (filePath: string) => {
+        const state = useAppStore.getState();
+        if (state.agentBackups[filePath] !== undefined) return;
+        try {
+           const original = await tauri.readWorkspaceFile(filePath);
+           state.setAgentBackups({ ...state.agentBackups, [filePath]: original });
+        } catch {
+           state.setAgentBackups({ ...state.agentBackups, [filePath]: null });
+        }
+      };
       
       switch (toolId) {
         case 'read-file': {
@@ -331,6 +349,7 @@ export function App() {
           return content;
         }
         case 'write-file': {
+          await storeBackup(args.path);
           let original = '';
           try { original = await tauri.readWorkspaceFile(args.path); } catch { /* new file */ }
           const proposed = args.content || '';
@@ -342,6 +361,7 @@ export function App() {
           return `Successfully wrote to ${args.path}`;
         }
         case 'patch-file': {
+          await storeBackup(args.path);
           let original = '';
           try { original = await tauri.readWorkspaceFile(args.path); } catch { /* new file */ }
           let proposed = original;
@@ -360,6 +380,7 @@ export function App() {
           return `Successfully patched ${args.path}`;
         }
         case 'replace-lines': {
+          await storeBackup(args.path);
           const original = await tauri.readWorkspaceFile(args.path);
           const lines = original.split(/\r?\n/);
           const startIdx = Math.max(0, (args.start_line || 1) - 1);
@@ -379,8 +400,11 @@ export function App() {
           return `Successfully replaced lines ${startIdx + 1} to ${endIdx + 1} in ${args.path}`;
         }
         case 'delete-file':
+          await storeBackup(args.path);
           return await tauri.deleteWorkspaceFile(args.path);
         case 'rename-file':
+          await storeBackup(args.from);
+          await storeBackup(args.to);
           return await tauri.renameWorkspaceFile(args.from, args.to);
         case 'list-directory': {
           if (args.recursive) {
@@ -396,8 +420,10 @@ export function App() {
         case 'grep-search':
           if (!currentPath) throw new Error('No workspace open');
           return await tauri.grepSearch(currentPath, args.pattern, args.include, args.path);
-        case 'query-codebase':
-          return await codebaseIndexer.search(args.query);
+        case 'query-codebase': {
+          const results = await codebaseIndexer.search(args.query);
+          return results.map(r => ({ path: r.path, text: r.text }));
+        }
         case 'terminal-exec': {
           if (!currentPath) throw new Error('No workspace open');
           useAppStore.getState().setBottomPanelTab('terminal');
@@ -490,15 +516,53 @@ export function App() {
         case 'bulk-replace':
           if (!currentPath) throw new Error('No workspace open');
           return await tauri.bulkReplace(currentPath, args.search, args.replace, args.include, args.path);
+        case 'delegate-task': {
+          const validPersonas = ['engineer', 'architect', 'qa'];
+          const persona = validPersonas.includes(args.persona) ? args.persona : 'engineer';
+          
+          useAppStore.getState().appendLogs([{
+            id: crypto.randomUUID(),
+            kind: 'info',
+            title: `Delegating to ${persona}`,
+            detail: (args.task || '').slice(0, 100) + '...',
+            createdAt: new Date().toISOString()
+          }]);
+
+          const state = useAppStore.getState();
+          const subContext = {
+            provider: selectedProvider,
+            messages: [{ id: crypto.randomUUID(), role: 'user' as const, content: `Task assigned by main agent: ${args.task}`, createdAt: new Date().toISOString() }],
+            workspacePath: state.workspacePath || undefined,
+            persona: persona as 'engineer' | 'architect' | 'qa',
+            createChat: async (request: any, config: any) => {
+              const tauri = await import('./lib/tauri');
+              const mappedMessages = request.messages.map((m: any) => {
+                const msg: any = { role: m.role, content: m.content };
+                if (m.tool_calls) msg.toolCalls = m.tool_calls;
+                if (m.tool_call_id) msg.toolCallId = m.tool_call_id;
+                if (m.name) msg.name = m.name;
+                return msg;
+              });
+              // Sub-agents run silently without streaming UI text
+              return await tauri.chatWithProvider(config.id, mappedMessages, request.tools);
+            }
+          };
+
+          const subResult = await runAgentLoop(subContext, executeToolImpl);
+          // Return the final reply from the sub-agent
+          return `Sub-agent (${persona}) completed the task. Final Report: ${subResult.reply?.content || 'No response'}`;
+        }
         default:
           throw new Error(`Tool "${toolId}" is not implemented.`);
       }
-    });
+    };
 
+    const result = await runAgentLoop(context, executeToolImpl);
     appendLogs(result.logs);
     setApprovalRequests(result.approvalRequests);
     appendMessage(result.reply);
     setIsAgentRunning(false);
+    useAppStore.getState().setStreamingMessage('');
 
     const firstWithDiff = result.approvalRequests.find(r => r.diff);
     if (firstWithDiff?.diff) {

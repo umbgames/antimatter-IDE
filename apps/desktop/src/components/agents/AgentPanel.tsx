@@ -3,7 +3,8 @@ import type { AgentActionLog, AgentMessage, ApprovalRequest, ProviderConfig } fr
 import { useAppStore } from '@/store/appStore';
 import { DiffPreviewCard } from './DiffPreviewCard';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { Send, User, TerminalSquare, Trash2, ChevronDown, ChevronRight, ListTodo, FileCode2 } from 'lucide-react';
+import { Send, User, TerminalSquare, Trash2, ChevronDown, ChevronRight, ListTodo, FileCode2, Mic, Undo2 } from 'lucide-react';
+import { transcribeAudio } from '@/lib/tauri';
 import logo from '@/assets/logo.svg';
 import { clsx } from 'clsx';
 
@@ -18,13 +19,125 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
     messages, actionLogs, approvalRequests, providerConfigs,
     selectedProviderId, setSelectedProviderId,
     activePersona, setActivePersona,
-    isAgentRunning, clearConversation, sessionTokens, aiEdits
+    isAgentRunning, clearConversation, sessionTokens, aiEdits,
+    streamingMessage
   } = useAppStore();
 
   const [prompt, setPrompt] = useState('');
   const [logsCollapsed, setLogsCollapsed] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [interimVoiceText, setInterimVoiceText] = useState('');
+  
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  const handleUndoAgent = async () => {
+    try {
+      const tauri = await import('@/lib/tauri');
+      for (const [path, content] of Object.entries(agentBackups)) {
+        if (content === null) {
+          try { await tauri.deleteWorkspaceFile(path); } catch {}
+        } else {
+          await tauri.writeWorkspaceFile(path, content);
+        }
+      }
+      useAppStore.getState().clearAIEdits();
+      useAppStore.getState().setAgentBackups({});
+      useAppStore.getState().appendLogs([{
+        id: crypto.randomUUID(),
+        kind: 'success',
+        title: 'Undo Successful',
+        detail: `Reverted ${Object.keys(agentBackups).length} file(s) to their original state.`,
+        createdAt: new Date().toISOString()
+      }]);
+    } catch (err: any) {
+      useAppStore.getState().appendLogs([{
+        id: crypto.randomUUID(),
+        kind: 'error',
+        title: 'Undo Failed',
+        detail: String(err),
+        createdAt: new Date().toISOString()
+      }]);
+    }
+  };
+
+  const toggleRecording = async () => {
+    if (isRecording) {
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
+        setIsRecording(false);
+      }
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+        setInterimVoiceText('');
+
+        mediaRecorder.ondataavailable = async (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+            
+            // Perform interim streaming transcription
+            if (selectedProviderId && isRecording) {
+              try {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                const arrayBuffer = await audioBlob.arrayBuffer();
+                const bytes = new Uint8Array(arrayBuffer);
+                const text = await transcribeAudio(selectedProviderId, bytes);
+                setInterimVoiceText(text);
+              } catch (e) {
+                // silently ignore interim transcription errors (e.g. rate limits)
+              }
+            }
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const arrayBuffer = await audioBlob.arrayBuffer();
+          const bytes = new Uint8Array(arrayBuffer);
+          
+          if (selectedProviderId) {
+            setIsTranscribing(true);
+            try {
+              const text = await transcribeAudio(selectedProviderId, bytes);
+              setPrompt(prev => prev + (prev.endsWith(' ') || prev === '' ? '' : ' ') + text);
+            } catch (err: any) {
+               void useAppStore.getState().appendLogs([{
+                 id: crypto.randomUUID(),
+                 kind: 'error',
+                 title: 'Transcription failed',
+                 detail: err.toString(),
+                 createdAt: new Date().toISOString()
+               }]);
+            } finally {
+              setIsTranscribing(false);
+              setInterimVoiceText('');
+            }
+          }
+          
+          stream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorder.start(1500); // Emits chunks every 1.5 seconds for real-time transcription
+        setIsRecording(true);
+      } catch (error: any) {
+        console.error('Error accessing microphone:', error);
+        void useAppStore.getState().appendLogs([{
+          id: crypto.randomUUID(),
+          kind: 'error',
+          title: 'Microphone Error',
+          detail: error.message || 'Could not access microphone',
+          createdAt: new Date().toISOString()
+        }]);
+      }
+    }
+  };
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -244,9 +357,13 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
                   </div>
                 </header>
                 <div className="message-body">
-                  <div className="typing-dots">
-                    <span /><span /><span />
-                  </div>
+                  {streamingMessage ? (
+                    <MarkdownRenderer content={streamingMessage + ' █'} />
+                  ) : (
+                    <div className="typing-dots">
+                      <span /><span /><span />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -302,9 +419,21 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
         {/* AI File Edits Summary */}
         {Object.keys(aiEdits).length > 0 && (
           <div className="agent-section">
-            <strong style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <FileCode2 size={12} /> AI Edits Summary
-            </strong>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <strong style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <FileCode2 size={12} /> AI Edits Summary
+              </strong>
+              {Object.keys(agentBackups).length > 0 && !isAgentRunning && (
+                <button
+                  className="button subtle"
+                  style={{ padding: '2px 6px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--danger)' }}
+                  onClick={handleUndoAgent}
+                  title="Undo all file changes from this session"
+                >
+                  <Undo2 size={12} /> Undo
+                </button>
+              )}
+            </div>
             <div className="log-list" style={{ marginTop: '4px' }}>
               {Object.entries(aiEdits).map(([path, stats]: any) => {
                 const fileName = path.split(/[\\/]/).pop();
@@ -335,50 +464,86 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
 
       {/* Compose Area */}
       <div className="agent-compose">
+        {isRecording && interimVoiceText && (
+          <div style={{ 
+            padding: '8px 12px', 
+            color: 'var(--accent)', 
+            fontSize: '13px', 
+            fontStyle: 'italic', 
+            background: 'var(--surface-sunken)', 
+            borderRadius: '6px 6px 0 0', 
+            borderBottom: '1px solid var(--border)', 
+            marginBottom: '4px' 
+          }}>
+            Listening: {interimVoiceText}...
+          </div>
+        )}
         <div style={{ position: 'relative' }}>
           <textarea
             ref={textareaRef}
             value={prompt}
             onChange={handleTextareaChange}
             onKeyDown={handleKeyDown}
-            placeholder={isAgentRunning ? 'Agent is working...' : 'Ask anything... (Enter to send, Shift+Enter for newline)'}
+            placeholder={isAgentRunning ? 'Agent is working...' : isRecording ? 'Listening...' : isTranscribing ? 'Transcribing...' : 'Ask anything... (Enter to send, Shift+Enter for newline)'}
             rows={1}
-            disabled={isAgentRunning}
+            disabled={isAgentRunning || isTranscribing}
             className="agent-textarea"
-            style={{ paddingRight: '40px' }}
+            style={{ paddingRight: '70px' }}
           />
-          <button
-            className="chat-send-icon-btn"
-            disabled={!prompt.trim() || !selectedProviderId || isAgentRunning}
-            onClick={() => {
-              void onSubmit(prompt);
-              setPrompt('');
-              if (textareaRef.current) {
-                textareaRef.current.style.height = 'auto';
-              }
-            }}
-            style={{
-              position: 'absolute',
-              right: '8px',
-              bottom: '8px',
-              background: 'transparent',
-              border: 'none',
-              padding: '4px',
-              cursor: (!prompt.trim() || !selectedProviderId || isAgentRunning) ? 'default' : 'pointer',
-              color: (!prompt.trim() || !selectedProviderId || isAgentRunning) ? 'var(--text-muted)' : 'var(--accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              opacity: (!prompt.trim() || !selectedProviderId || isAgentRunning) ? 0.5 : 1
-            }}
-          >
-            {isAgentRunning ? (
-               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="spin">
-                <circle cx="12" cy="12" r="10" stroke="rgba(99, 102, 241, 0.2)" strokeWidth="2" />
+          <div style={{ position: 'absolute', right: '4px', bottom: '4px', display: 'flex', gap: '2px', alignItems: 'center' }}>
+            <button
+              className="chat-icon-btn"
+              onClick={toggleRecording}
+              disabled={!selectedProviderId || isAgentRunning || isTranscribing}
+              title={isRecording ? "Stop recording" : "Record voice"}
+              style={{
+                background: isRecording ? 'var(--danger)' : 'transparent',
+                color: isRecording ? 'white' : 'var(--text-secondary)',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '6px',
+                cursor: 'pointer',
+                opacity: (!selectedProviderId || isAgentRunning || isTranscribing) ? 0.5 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              {isTranscribing ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="spin">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.2" />
                 <path d="M12 2C6.48 2 2 6.48 2 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            ) : <Send size={16} />}
-          </button>
+              </svg> : <Mic size={14} />}
+            </button>
+            <button
+              className="chat-send-icon-btn"
+              disabled={!prompt.trim() || !selectedProviderId || isAgentRunning}
+              onClick={() => {
+                void onSubmit(prompt);
+                setPrompt('');
+                if (textareaRef.current) {
+                  textareaRef.current.style.height = 'auto';
+                }
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                padding: '6px',
+                cursor: (!prompt.trim() || !selectedProviderId || isAgentRunning) ? 'default' : 'pointer',
+                color: (!prompt.trim() || !selectedProviderId || isAgentRunning) ? 'var(--text-muted)' : 'var(--accent)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: (!prompt.trim() || !selectedProviderId || isAgentRunning) ? 0.5 : 1
+              }}
+            >
+              {isAgentRunning ? (
+                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="spin">
+                  <circle cx="12" cy="12" r="10" stroke="rgba(99, 102, 241, 0.2)" strokeWidth="2" />
+                  <path d="M12 2C6.48 2 2 6.48 2 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              ) : <Send size={14} />}
+            </button>
+          </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
           <span className="helper-text" style={{ fontSize: '11px', color: 'var(--danger)' }}>
