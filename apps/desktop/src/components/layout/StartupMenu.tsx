@@ -1,4 +1,4 @@
-this import type { RecentProject } from '@antimatter/shared';
+import type { RecentProject } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { openFolderPicker, readDirectory, saveRecentProject } from '@/lib/tauri';
 import { FolderOpen, FilePlus, HardDrive } from 'lucide-react';
