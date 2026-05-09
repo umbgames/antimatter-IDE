@@ -24,6 +24,8 @@ pub fn run() {
             commands::provider::save_provider,
             commands::provider::test_provider_connection,
             commands::provider::chat_with_provider,
+            commands::provider::chat_with_provider_stream,
+            commands::provider::transcribe_audio,
             commands::workspace::read_directory,
             commands::workspace::read_workspace_file,
             commands::workspace::write_workspace_file,
@@ -44,6 +46,7 @@ pub fn run() {
             commands::workspace::fetch_url,
             commands::lsp::start_lsp,
             commands::lsp::send_lsp_message,
+            commands::vision::capture_screen,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Antimatter");
