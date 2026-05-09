@@ -20,7 +20,7 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
     selectedProviderId, setSelectedProviderId,
     activePersona, setActivePersona,
     isAgentRunning, clearConversation, sessionTokens, aiEdits,
-    streamingMessage
+    streamingMessage, agentBackups
   } = useAppStore();
 
   const [prompt, setPrompt] = useState('');

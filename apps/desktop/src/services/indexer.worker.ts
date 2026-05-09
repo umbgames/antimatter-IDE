@@ -26,7 +26,7 @@ function chunkContent(content: string, path: string) {
 }
 
 self.onmessage = async (e: MessageEvent) => {
-  const { type, payload } = e.data;
+  const { type, payload, id } = e.data;
 
   if (type === 'init') {
     await initPipeline();
