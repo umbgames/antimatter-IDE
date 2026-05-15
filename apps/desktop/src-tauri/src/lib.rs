@@ -11,8 +11,13 @@ pub fn run() {
         process_map: Mutex::new(HashMap::new()),
     };
 
+    let pty_state = commands::pty::PtyState {
+        writer: Mutex::new(None),
+    };
+
     tauri::Builder::default()
         .manage(lsp_state)
+        .manage(pty_state)
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
@@ -44,9 +49,15 @@ pub fn run() {
             commands::workspace::grep_search,
             commands::workspace::bulk_replace,
             commands::workspace::fetch_url,
+            commands::workspace::find_symbols,
+            commands::workspace::read_files_batch,
+            commands::workspace::generate_repo_map,
             commands::lsp::start_lsp,
             commands::lsp::send_lsp_message,
             commands::vision::capture_screen,
+            commands::pty::spawn_pty,
+            commands::pty::write_pty,
+            commands::pty::resize_pty,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Antimatter");

@@ -248,8 +248,8 @@ async fn send_openai_compatible_chat(
         }
     }
 
-    let mut retries = 0;
-    let max_retries = 5;
+    let mut retries = 0u32;
+    let max_retries = 3u32;
 
     loop {
         let mut request = client
@@ -266,7 +266,8 @@ async fn send_openai_compatible_chat(
             Err(e) => {
                 if retries < max_retries {
                     retries += 1;
-                    tokio::time::sleep(std::time::Duration::from_millis(1000 * (1 << retries))).await;
+                    let backoff = std::cmp::min(1000 * (1u64 << retries), 4000);
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff)).await;
                     continue;
                 }
                 return Err(format_network_error(e));
@@ -293,15 +294,21 @@ async fn send_openai_compatible_chat(
 
         if status.as_u16() == 429 && retries < max_retries {
             retries += 1;
-            let wait_time = parse_retry_after(&headers, &body);
+            let wait_time = std::cmp::min(parse_retry_after(&headers, &body), 15000);
             tokio::time::sleep(std::time::Duration::from_millis(wait_time)).await;
             continue;
         }
 
         if status.as_u16() >= 500 && retries < max_retries {
             retries += 1;
-            tokio::time::sleep(std::time::Duration::from_millis(1000 * (1 << retries))).await;
+            let backoff = std::cmp::min(1000 * (1u64 << retries), 4000);
+            tokio::time::sleep(std::time::Duration::from_millis(backoff)).await;
             continue;
+        }
+
+        // Tag 429 errors so the frontend agent loop can detect and retry at a higher level
+        if status.as_u16() == 429 {
+            return Err(format!("[RATE_LIMITED] {}", compact_error_body(&body)));
         }
 
         // If tools caused a rejection (some providers/models don't support them),
@@ -413,8 +420,8 @@ async fn send_openai_compatible_chat_stream(
         }
     }
 
-    let mut retries = 0;
-    let max_retries = 5;
+    let mut retries = 0u32;
+    let max_retries = 3u32;
 
     loop {
         let mut request = client
@@ -431,7 +438,8 @@ async fn send_openai_compatible_chat_stream(
             Err(e) => {
                 if retries < max_retries {
                     retries += 1;
-                    tokio::time::sleep(std::time::Duration::from_millis(1000 * (1 << retries))).await;
+                    let backoff = std::cmp::min(1000 * (1u64 << retries), 4000);
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff)).await;
                     continue;
                 }
                 return Err(format_network_error(e));
@@ -445,15 +453,21 @@ async fn send_openai_compatible_chat_stream(
 
             if status.as_u16() == 429 && retries < max_retries {
                 retries += 1;
-                let wait_time = parse_retry_after(&headers, &body);
+                let wait_time = std::cmp::min(parse_retry_after(&headers, &body), 15000);
                 tokio::time::sleep(std::time::Duration::from_millis(wait_time)).await;
                 continue;
             }
 
             if status.as_u16() >= 500 && retries < max_retries {
                 retries += 1;
-                tokio::time::sleep(std::time::Duration::from_millis(1000 * (1 << retries))).await;
+                let backoff = std::cmp::min(1000 * (1u64 << retries), 4000);
+                tokio::time::sleep(std::time::Duration::from_millis(backoff)).await;
                 continue;
+            }
+
+            // Tag 429 errors so the frontend can detect and handle gracefully
+            if status.as_u16() == 429 {
+                return Err(format!("[RATE_LIMITED] {}", compact_error_body(&body)));
             }
 
             return Err(format!("Provider returned {}. {}", status, compact_error_body(&body)));

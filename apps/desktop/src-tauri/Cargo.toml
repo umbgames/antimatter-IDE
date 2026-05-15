@@ -24,4 +24,5 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 regex = "1"
 screenshots = "0.8.10"
 base64 = "0.22.0"
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "sync", "io-util", "rt"] }
+portable-pty = "0.8"

@@ -698,6 +698,251 @@ pub fn get_git_diff(path: String, staged: bool) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+// ─── Symbol Search ───
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SymbolMatch {
+    pub file: String,
+    pub line: usize,
+    pub kind: String,
+    pub signature: String,
+}
+
+#[tauri::command]
+pub fn find_symbols(root: String, name: String, kind: Option<String>, include: Option<String>) -> Result<Vec<SymbolMatch>, String> {
+    let name_lower = name.to_lowercase();
+    let kind_filter = kind.unwrap_or_else(|| "all".to_string());
+    let ext_filter = include.as_deref().and_then(|i| i.strip_prefix("*."));
+    let mut results = Vec::new();
+
+    for entry in WalkDir::new(&root).max_depth(8).into_iter().filter_map(Result::ok) {
+        let path = entry.path();
+        if !path.is_file() { continue; }
+
+        let path_str = path.to_string_lossy();
+        if path_str.contains(".git") || path_str.contains("node_modules") || path_str.contains("target/debug") || path_str.contains("target/release") || path_str.contains("__pycache__") || path_str.contains(".next") {
+            continue;
+        }
+
+        if let Some(ext) = ext_filter {
+            if !path_str.ends_with(ext) { continue; }
+        }
+
+        // Only scan code files
+        let lang = infer_language_from_path(path);
+        if lang == "unknown" { continue; }
+
+        if let Ok(content) = fs::read_to_string(path) {
+            for (i, line) in content.lines().enumerate() {
+                let trimmed = line.trim();
+                let line_lower = trimmed.to_lowercase();
+
+                if !line_lower.contains(&name_lower) { continue; }
+
+                let (detected_kind, sig) = detect_symbol(trimmed, &lang);
+                if detected_kind.is_empty() { continue; }
+
+                if kind_filter != "all" && detected_kind != kind_filter { continue; }
+
+                results.push(SymbolMatch {
+                    file: path.to_string_lossy().to_string(),
+                    line: i + 1,
+                    kind: detected_kind,
+                    signature: sig,
+                });
+
+                if results.len() >= 100 { return Ok(results); }
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+fn detect_symbol(trimmed: &str, lang: &str) -> (String, String) {
+    let sig = if trimmed.len() > 150 { format!("{}...", &trimmed[..150]) } else { trimmed.to_string() };
+
+    // Functions
+    if trimmed.starts_with("function ") || trimmed.starts_with("async function ")
+        || trimmed.starts_with("export function ") || trimmed.starts_with("export async function ")
+        || trimmed.starts_with("export default function ") {
+        return ("function".into(), sig);
+    }
+    if (lang == "rust") && (trimmed.starts_with("pub fn ") || trimmed.starts_with("fn ") || trimmed.starts_with("pub async fn ") || trimmed.starts_with("async fn ")) {
+        return ("function".into(), sig);
+    }
+    if (lang == "python") && trimmed.starts_with("def ") {
+        return ("function".into(), sig);
+    }
+    // Arrow functions
+    if (trimmed.starts_with("const ") || trimmed.starts_with("export const ") || trimmed.starts_with("let ")) && (trimmed.contains("=>") || trimmed.contains("= function")) {
+        return ("function".into(), sig);
+    }
+
+    // Classes / structs / interfaces / enums
+    if trimmed.starts_with("class ") || trimmed.starts_with("export class ") || trimmed.starts_with("export default class ") {
+        return ("class".into(), sig);
+    }
+    if trimmed.starts_with("struct ") || trimmed.starts_with("pub struct ") {
+        return ("struct".into(), sig);
+    }
+    if trimmed.starts_with("interface ") || trimmed.starts_with("export interface ") {
+        return ("interface".into(), sig);
+    }
+    if trimmed.starts_with("enum ") || trimmed.starts_with("pub enum ") || trimmed.starts_with("export enum ") {
+        return ("enum".into(), sig);
+    }
+    if trimmed.starts_with("type ") || trimmed.starts_with("export type ") {
+        return ("type".into(), sig);
+    }
+
+    (String::new(), String::new())
+}
+
+// ─── Batch File Read ───
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct BatchFileResult {
+    pub path: String,
+    pub content: Option<String>,
+    pub error: Option<String>,
+    pub line_count: Option<usize>,
+    pub truncated: bool,
+}
+
+#[tauri::command]
+pub fn read_files_batch(paths: Vec<String>, max_lines: Option<usize>) -> Vec<BatchFileResult> {
+    let limit = max_lines.unwrap_or(300);
+    paths.iter().map(|p| {
+        match fs::read_to_string(p) {
+            Ok(content) => {
+                let lines: Vec<&str> = content.lines().collect();
+                let total = lines.len();
+                if total > limit {
+                    BatchFileResult {
+                        path: p.clone(),
+                        content: Some(format!("{}\n\n[Truncated: showing {} of {} lines. Use read-file with start_line/end_line for more.]",
+                            lines[..limit].join("\n"), limit, total)),
+                        error: None,
+                        line_count: Some(total),
+                        truncated: true,
+                    }
+                } else {
+                    BatchFileResult {
+                        path: p.clone(),
+                        content: Some(content),
+                        error: None,
+                        line_count: Some(total),
+                        truncated: false,
+                    }
+                }
+            },
+            Err(e) => BatchFileResult {
+                path: p.clone(),
+                content: None,
+                error: Some(format!("Cannot read: {}", e)),
+                line_count: None,
+                truncated: false,
+            }
+        }
+    }).collect()
+}
+
+// ─── Repo Map Generation ───
+
+#[tauri::command]
+pub fn generate_repo_map(root: String) -> Result<String, String> {
+    let mut output = String::new();
+    let mut file_count = 0usize;
+
+    for entry in WalkDir::new(&root).max_depth(4).into_iter().filter_map(Result::ok) {
+        let path = entry.path();
+        let rel = path.strip_prefix(&root).unwrap_or(path).to_string_lossy().to_string();
+
+        if rel.is_empty() { continue; }
+        if rel.contains(".git") || rel.contains("node_modules") || rel.contains("target/debug")
+            || rel.contains("target/release") || rel.contains("__pycache__") || rel.contains(".next")
+            || rel.contains("dist/") || rel.contains("build/") || rel.contains(".turbo") {
+            continue;
+        }
+
+        let depth = rel.matches(|c: char| c == '/' || c == '\\').count();
+        let indent = "  ".repeat(depth);
+
+        if path.is_dir() {
+            output.push_str(&format!("{}📁 {}/\n", indent, entry.file_name().to_string_lossy()));
+        } else {
+            let lang = infer_language_from_path(path);
+            if lang == "unknown" { continue; }
+
+            file_count += 1;
+            if file_count > 500 { break; }
+
+            // Extract top-level symbols for code files
+            let symbols = extract_top_symbols(path);
+            if symbols.is_empty() {
+                output.push_str(&format!("{}📄 {}\n", indent, entry.file_name().to_string_lossy()));
+            } else {
+                output.push_str(&format!("{}📄 {} [{}]\n", indent, entry.file_name().to_string_lossy(), symbols));
+            }
+        }
+    }
+
+    if output.len() > 15000 {
+        output.truncate(15000);
+        output.push_str("\n... [repo map truncated]\n");
+    }
+
+    Ok(output)
+}
+
+fn extract_top_symbols(path: &std::path::Path) -> String {
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return String::new(),
+    };
+
+    let mut symbols: Vec<String> = Vec::new();
+    let lang = infer_language_from_path(path);
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        let (kind, _) = detect_symbol(trimmed, &lang);
+        if kind.is_empty() { continue; }
+
+        // Extract just the name
+        let name = extract_symbol_name(trimmed);
+        if !name.is_empty() && symbols.len() < 8 {
+            symbols.push(name);
+        }
+    }
+
+    symbols.join(", ")
+}
+
+fn extract_symbol_name(line: &str) -> String {
+    let patterns = [
+        "export default function ", "export async function ", "export function ",
+        "async function ", "function ",
+        "pub async fn ", "pub fn ", "async fn ", "fn ",
+        "export default class ", "export class ", "class ",
+        "pub struct ", "struct ",
+        "export interface ", "interface ",
+        "pub enum ", "export enum ", "enum ",
+        "export type ", "type ",
+        "export const ", "const ", "let ", "def ",
+    ];
+
+    for pat in patterns {
+        if line.starts_with(pat) {
+            let rest = &line[pat.len()..];
+            let name: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if !name.is_empty() { return name; }
+        }
+    }
+    String::new()
+}
+
 // ─── Helpers ───
 
 fn infer_language_from_path(path: &std::path::Path) -> String {
