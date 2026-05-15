@@ -8,6 +8,7 @@ export interface AgentRunContext {
   messages: AgentMessage[];
   workspacePath?: string;
   persona?: 'engineer' | 'architect' | 'qa';
+  repoMap?: string; // Pre-computed compact file tree + symbol outline
   createChat?: (
     request: { model: string; messages: { role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }[]; tools?: any[] },
     config: ProviderConfig,
@@ -15,6 +16,29 @@ export interface AgentRunContext {
   ) => Promise<ChatResponse>;
   onTokensUsed?: (tokens: number) => void;
   onStreamUpdate?: (content: string) => void;
+}
+
+// ─── File Content Cache (avoids re-reading unchanged files) ───
+const fileContentCache = new Map<string, { content: string; readAt: number }>();
+const CACHE_TTL_MS = 30_000; // 30 seconds
+
+export function getCachedFile(path: string): string | null {
+  const entry = fileContentCache.get(path);
+  if (entry && Date.now() - entry.readAt < CACHE_TTL_MS) return entry.content;
+  return null;
+}
+
+export function setCachedFile(path: string, content: string): void {
+  fileContentCache.set(path, { content, readAt: Date.now() });
+  // Evict old entries if cache grows too large
+  if (fileContentCache.size > 200) {
+    const oldest = [...fileContentCache.entries()].sort((a, b) => a[1].readAt - b[1].readAt);
+    for (let i = 0; i < 50; i++) fileContentCache.delete(oldest[i][0]);
+  }
+}
+
+export function invalidateCachedFile(path: string): void {
+  fileContentCache.delete(path);
 }
 
 export interface AgentRunResult {
@@ -48,111 +72,52 @@ Focus on reliability, edge cases, and testing. Prioritize finding bugs, writing 
 
 // ─── System Prompt ───
 
-function buildSystemPrompt(): string {
-  const toolDocs = builtInTools.map(t => {
-    const schema = t.schema ? `  Schema: ${t.schema}` : '';
-    return `### ${t.id} — ${t.label}\n  ${t.description}\n${schema}`;
-  }).join('\n\n');
+function buildSystemPrompt(repoMap?: string, isFirstTurn?: boolean): string {
+  // Compact tool reference — only names + one-line descriptions
+  const toolRef = builtInTools.map(t => `- **${t.id}**: ${t.description.split('.')[0]}.`).join('\n');
+
+  const repoSection = repoMap 
+    ? `\n## Repository Map\nThis is a snapshot of the workspace structure and key symbols. Use it to navigate efficiently without listing directories manually.\n\`\`\`\n${repoMap}\n\`\`\`\n`
+    : '';
+
+  // Only include examples on first turn to save context
+  const examples = isFirstTurn ? `
+## Tool Call Format (XML Fallback)
+If you do NOT have native function calling, use: \`<tool_call id="tool-id">{"key": "value"}</tool_call>\`
+
+## Key Examples
+- Write: \`<tool_call id="write-file">{"path": "abs/path", "content": "..."}\`
+- Patch: \`<tool_call id="patch-file">{"path": "abs/path", "replacements": [{"search": "old", "replace": "new"}]}\`
+- Search: \`<tool_call id="grep-search">{"pattern": "regex", "include": "*.ts"}\`
+- Terminal: \`<tool_call id="terminal-exec">{"command": "npm install"}\`
+- Read batch: \`<tool_call id="read-files">{"paths": ["file1", "file2"]}\`
+- Find symbol: \`<tool_call id="find-symbols">{"name": "handleSubmit", "kind": "function"}\`
+` : '';
 
   return `
 # Antimatter IDE Agent
 
 You are **Antimatter**, a powerful agentic IDE assistant built by UMB GAMES AND TECHNOLOGY LTD.
-You operate inside a desktop IDE and can directly read, write, and modify files, run terminal commands, analyze code, search the web, and more.
+You operate inside a desktop IDE with full file system and terminal access.
 
 ## Core Rules
-
-1. **Act, don't describe.** When asked to create a file, write code, or run a command — DO IT using the available tools. Never just show code in your response without also writing it to a file.
-2. **Use tools aggressively.** Call tools whenever you need to interact with the workspace. You can call tools either via native function calling OR via the XML format below — use whichever your architecture supports.
-3. **Think briefly, then act.** Start each response with a one-line thought, then immediately use a tool.
-4. **Be precise with paths.** Use the workspace path as the root. If the workspace is at \`C:/projects/myapp\`, a file at \`src/index.ts\` should be \`C:/projects/myapp/src/index.ts\`.
-5. **Use terminal-exec freely.** You have direct terminal access. Use it for: installing packages (npm/pip/cargo), running builds, running tests, git commands, file system operations, or anything else needed.
-6. **Analyze before modifying.** When working on existing code, use \`analyze-file\` or \`grep-search\` instead of reading entire files when looking for functions or lines.
-7. **Always plan your work.** When given a complex or multi-step task, start your response with a structured \\\`<plan>\\\` block outlining the steps you will take as a markdown checklist. For Example:
+1. **Act, don't describe.** Use tools immediately. Never show code without writing it to a file.
+2. **Be efficient with large repos.** Use \`find-symbols\`, \`grep-search\`, and \`analyze-file\` to navigate. Read specific line ranges instead of full files. Use \`read-files\` to batch-read multiple files.
+3. **Plan complex work.** For multi-step tasks, start with a \`<plan>\` block:
    <plan>
-   - [ ] Step 1 description
-   - [ ] Step 2 description
+   - [ ] Step 1
+   - [ ] Step 2
    </plan>
-   You MUST include this block before you run any tools for anything other than short direct questions.
-8. **Professional tone.** Be concise, technical, and helpful. No unnecessary chatter.
-
-## Tool Call Format (XML Fallback)
-
-If you do NOT support native function/tool calling, use this exact XML format:
-\`\`\`
-<tool_call id="tool-id">{"key": "value"}</tool_call>
-\`\`\`
-
-The JSON must be valid. The tool_call tag must be on its own line.
-
+4. **Use absolute paths.** Always construct full paths from the workspace root.
+5. **Prefer patch-file over write-file** for existing files — it's safer and uses less context.
+6. **Use the repo map** (below) to understand project structure before exploring manually.
+7. **Terminal is unrestricted.** Run any command: npm, cargo, git, python, etc.
+8. **Be concise.** Short technical responses. No fluff.
+${repoSection}
 ## Available Tools
-
-${toolDocs}
-
-## Tool Usage Examples
-
-**Create a file:**
-<tool_call id="write-file">{"path": "C:/projects/myapp/index.html", "content": "<!DOCTYPE html>\\n<html>\\n<head><title>Hello</title></head>\\n<body><h1>Hello World</h1></body>\\n</html>"}</tool_call>
-
-**Read a file (paginated):**
-<tool_call id="read-file">{"path": "C:/projects/myapp/src/main.ts", "start_line": 1, "end_line": 200}</tool_call>
-
-**Run terminal command:**
-<tool_call id="terminal-exec">{"command": "npm install express"}</tool_call>
-
-**Search codebase:**
-<tool_call id="grep-search">{"pattern": "useState", "include": "*.tsx"}</tool_call>
-
-**Analyze a file:**
-<tool_call id="analyze-file">{"path": "C:/projects/myapp/src/App.tsx"}</tool_call>
-
-**Analyze project structure:**
-<tool_call id="analyze-project">{}</tool_call>
-
-**List directory:**
-<tool_call id="list-directory">{"path": "C:/projects/myapp/src", "recursive": true, "maxDepth": 3}</tool_call>
-
-**Patch existing file (search and replace):**
-<tool_call id="patch-file">{"path": "C:/projects/myapp/src/main.ts", "replacements": [{"search": "console.log('old')", "replace": "console.log('new')"}]}</tool_call>
-
-**Surgically replace lines (by line number):**
-<tool_call id="replace-lines">{"path": "C:/projects/myapp/src/main.ts", "start_line": 24, "end_line": 24, "replacement": "    const formatted = format(data);"}</tool_call>
-
-**Fetch documentation from the web:**
-<tool_call id="fetch-url">{"url": "https://docs.example.com/api"}</tool_call>
-
-**Delete a file:**
-<tool_call id="delete-file">{"path": "C:/projects/myapp/temp.txt"}</tool_call>
-
-**Rename / move a file:**
-<tool_call id="rename-file">{"from": "C:/projects/myapp/old.ts", "to": "C:/projects/myapp/src/new.ts"}</tool_call>
-
-**Find and replace across files:**
-<tool_call id="bulk-replace">{"search": "oldFunction", "replace": "newFunction", "include": "*.ts"}</tool_call>
-
-## Workflow Patterns
-
-**Creating a new project file:**
-1. Think about what to create
-2. Use write-file to create it immediately
-3. If needed, use terminal-exec to install dependencies
-
-**Modifying existing code:**
-1. Use read-file or analyze-file to understand current code
-2. Use patch-file for targeted changes, or write-file for full rewrites
-3. Optionally run tests via terminal-exec
-
-**Debugging:**
-1. Use analyze-file to find issues
-2. Use grep-search to find related code
-3. Use read-file to examine specific files
-4. Apply fixes with patch-file
-
-**Building/Running:**
-1. Use terminal-exec to run any command: npm/yarn/cargo/python/git
-2. Read the output and fix any issues
-
-Remember: You have FULL access to the terminal and file system. Use it. Don't ask for permission — just do it.
+${toolRef}
+${examples}
+Remember: You have FULL access to the terminal and file system. Act decisively.
 `;
 }
 
@@ -289,45 +254,64 @@ export async function runAgentLoop(
   const nativeTools = toOpenAITools();
 
   let loopCount = 0;
-  const MAX_LOOPS = 12;
+  const MAX_LOOPS = 25;
+  const isFirstTurn = currentMessages.filter(m => m.role === 'assistant').length === 0;
 
   while (loopCount < MAX_LOOPS) {
     loopCount++;
     try {
-      // ─── Context Window Management ───
-      // Smartly chunk and aggressively prune context based on provider limits
+      // ─── Smart Context Window Management ───
       let MAX_CONTEXT_CHARS = 128000;
       let MAX_MESSAGE_CHARS = 32000;
+      let MAX_TOOL_RESULT_CHARS = 12000;
 
       if (provider.kind === 'groq') {
-        // Groq free tiers have strict 8K TPM limits.
-        // We chunk the data tightly: ~5000 tokens total context, ~1500 tokens max per message.
-        MAX_CONTEXT_CHARS = 20000; 
+        MAX_CONTEXT_CHARS = 20000;
         MAX_MESSAGE_CHARS = 6000;
+        MAX_TOOL_RESULT_CHARS = 4000;
       }
 
       let trimmedMessages = [...currentMessages];
-      
-      // Truncate individually long messages first
+
+      // 1. Compress tool results — summarize large observations
       trimmedMessages = trimmedMessages.map(m => {
+        if (m.role === 'tool' && m.content && m.content.length > MAX_TOOL_RESULT_CHARS) {
+          const lines = m.content.split('\n');
+          const head = lines.slice(0, 40).join('\n');
+          const tail = lines.slice(-20).join('\n');
+          return { ...m, content: `${head}\n\n... [${lines.length - 60} lines omitted for context efficiency] ...\n\n${tail}` };
+        }
         if (m.content && m.content.length > MAX_MESSAGE_CHARS && (m.content.startsWith('<observation>') || m.role === 'user' || m.role === 'tool')) {
-          return { ...m, content: m.content.slice(0, MAX_MESSAGE_CHARS) + '\n...[truncated by smart chunking to respect provider rate limits]' };
+          return { ...m, content: m.content.slice(0, MAX_MESSAGE_CHARS) + '\n...[truncated]' };
         }
         return m;
       });
 
+      // 2. Importance-scored pruning — keep first user msg, last 6 exchanges, and all tool-result pairs
       let totalChars = trimmedMessages.reduce((sum, m) => sum + (m.content?.length || 0), 0);
-      
-      // Drop older context if still over limit
-      while (totalChars > MAX_CONTEXT_CHARS && trimmedMessages.length > 2) {
-        const removeIdx = Math.min(1, trimmedMessages.length - 2);
+      while (totalChars > MAX_CONTEXT_CHARS && trimmedMessages.length > 4) {
+        // Find the oldest non-critical message to remove (skip first user msg and recent messages)
+        let removeIdx = -1;
+        for (let i = 1; i < trimmedMessages.length - 4; i++) {
+          const m = trimmedMessages[i];
+          // Don't remove tool messages that have a matching assistant tool_call
+          if (m.role === 'tool' && m.toolCallId) continue;
+          // Don't remove assistant messages with tool_calls that have pending results
+          if (m.role === 'assistant' && m.toolCalls) {
+            const hasResult = trimmedMessages.some(tm => tm.toolCallId && m.toolCalls?.some(tc => tc.id === tm.toolCallId));
+            if (hasResult) continue;
+          }
+          removeIdx = i;
+          break;
+        }
+        if (removeIdx === -1) removeIdx = 1;
         totalChars -= (trimmedMessages[removeIdx].content?.length || 0);
         trimmedMessages.splice(removeIdx, 1);
       }
 
-      // Build messages array for the API, including tool calling metadata
+      // Build messages array for the API
       const chatMessages = [
-        { role: 'system' as const, content: buildSystemPrompt() + personaPrompt + workspaceContext },
+        { role: 'system' as const, content: buildSystemPrompt(context.repoMap, isFirstTurn && loopCount === 1) + personaPrompt + workspaceContext },
         ...trimmedMessages.map(m => {
           const msg: any = { role: m.role, content: m.content };
           if (m.toolCalls) msg.tool_calls = m.toolCalls;
@@ -479,11 +463,23 @@ export async function runAgentLoop(
 
       // ─── TEXT RESPONSE (no native tool calls) ───
       if (!responseContent || responseContent.trim().length === 0) {
+        // Retry once — empty responses are often transient (rate limit edge case)
+        if (loopCount < MAX_LOOPS) {
+          logs.push({
+            id: crypto.randomUUID(),
+            kind: 'info',
+            title: 'Empty response — retrying',
+            detail: `${provider.label} returned no content. Retrying in 2 seconds...`,
+            createdAt: new Date().toISOString()
+          });
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
         logs.push({
           id: crypto.randomUUID(),
           kind: 'error',
           title: 'Empty response from model',
-          detail: `${provider.label} returned no content. This may indicate a provider issue or rate limit.`,
+          detail: `${provider.label} returned no content after retries. This may indicate a provider issue or rate limit.`,
           createdAt: new Date().toISOString()
         });
         return {
@@ -600,6 +596,22 @@ export async function runAgentLoop(
 
     } catch (err: any) {
       const errorDetail = err.message || String(err);
+      
+      // If the backend tagged this as a rate limit, wait and retry instead of killing the agent
+      if (errorDetail.includes('[RATE_LIMITED]') && loopCount < MAX_LOOPS) {
+        logs.push({
+          id: crypto.randomUUID(),
+          kind: 'info',
+          title: 'Rate limited — waiting',
+          detail: 'Provider rate limit hit. Waiting 5 seconds before retrying...',
+          createdAt: new Date().toISOString()
+        });
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Don't increment loopCount — this wasn't a real iteration
+        loopCount--;
+        continue;
+      }
+
       logs.push({
         id: crypto.randomUUID(),
         kind: 'error',
@@ -620,7 +632,7 @@ export async function runAgentLoop(
       id: crypto.randomUUID(),
       kind: 'error',
       title: 'Loop limit reached',
-      detail: `Agent used ${MAX_LOOPS} iterations. Consider breaking your request into smaller steps.`,
+      detail: `Agent used ${MAX_LOOPS} iterations across ${logs.filter(l => l.kind === 'tool').length} tool calls. Consider breaking complex work into smaller requests.`,
       createdAt: new Date().toISOString()
     });
   }
