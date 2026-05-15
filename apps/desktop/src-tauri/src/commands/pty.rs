@@ -61,8 +61,8 @@ pub fn spawn_pty(
         .map_err(|e| format!("Failed to clone PTY reader: {}", e))?;
 
     // Store writer so we can send keystrokes later
-    let writer = pair.master.try_clone_writer()
-        .map_err(|e| format!("Failed to clone PTY writer: {}", e))?;
+    let writer = pair.master.take_writer()
+        .map_err(|e| format!("Failed to take PTY writer: {}", e))?;
     {
         let mut guard = state.writer.lock().unwrap();
         *guard = Some(writer);
