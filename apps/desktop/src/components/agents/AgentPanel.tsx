@@ -201,6 +201,16 @@ export function AgentPanel({ onSubmit, onApprove, onReject }: Props) {
               {sessionTokens.toLocaleString()} tkns
             </div>
           )}
+          {Object.keys(agentBackups).length > 0 && (
+            <button
+              className="button subtle"
+              style={{ padding: '2px 6px', fontSize: '11px', color: 'var(--text-warning)' }}
+              onClick={handleUndoAgent}
+              title={`Undo ${Object.keys(agentBackups).length} file changes`}
+            >
+              <Undo2 size={12} />
+            </button>
+          )}
           <button
             className="button subtle"
             style={{ padding: '2px 6px', fontSize: '11px' }}

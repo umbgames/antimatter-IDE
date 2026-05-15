@@ -30,12 +30,17 @@ export class LspClient {
   ) {}
 
   public async start() {
-    await invoke('start_lsp', {
-      language: this.language,
-      binPath: this.binPath,
-      args: [],
-      rootPath: this.workspacePath
-    });
+    try {
+      await invoke('start_lsp', {
+        language: this.language,
+        binPath: this.binPath,
+        args: [],
+        rootPath: this.workspacePath
+      });
+    } catch (err) {
+      console.warn(`[LSP] Cannot start ${this.binPath}: ${err}`);
+      return; // Don't block — LSP is optional
+    }
 
     listen<{ language: string; message: string }>('lsp-message', (event) => {
       if (event.payload.language === this.language) {
@@ -43,16 +48,28 @@ export class LspClient {
       }
     });
 
-    await this.initialize();
+    // Initialize with a timeout so a broken LSP can't hang the editor
+    try {
+      await this.initialize();
+    } catch (err) {
+      console.warn(`[LSP] ${this.language} initialization failed:`, err);
+    }
   }
 
   private async initialize() {
-    const result = await this.sendRequest('initialize', {
+    const initPromise = this.sendRequest('initialize', {
       processId: null,
       rootUri: `file://${this.workspacePath.replace(/\\/g, '/')}`,
       capabilities: {},
       trace: 'off'
     });
+
+    // 5 second timeout — if LSP doesn't respond, give up gracefully
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('LSP initialize timed out after 5s')), 5000)
+    );
+
+    const result = await Promise.race([initPromise, timeout]);
     this.sendNotification('initialized', {});
     this.isInitialized = true;
     console.log(`[LSP] ${this.language} initialized:`, result);

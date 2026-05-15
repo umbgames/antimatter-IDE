@@ -13,5 +13,10 @@ export default defineConfig({
     port: 1420,
     strictPort: true
   },
-  clearScreen: false
+  clearScreen: false,
+  // Bundle Monaco Editor workers locally instead of downloading from CDN.
+  // This is the key fix for offline support and fast file opening.
+  worker: {
+    format: 'es'
+  }
 });

@@ -83,6 +83,24 @@ export async function bulkReplace(root: string, search: string, replace: string,
   return invoke('bulk_replace', { root, search, replace, include, subPath });
 }
 
+// ─── Symbol Search ───
+
+export async function findSymbols(root: string, name: string, kind?: string, include?: string): Promise<any[]> {
+  return invoke('find_symbols', { root, name, kind, include });
+}
+
+// ─── Batch File Read ───
+
+export async function readFilesBatch(paths: string[], maxLines?: number): Promise<any[]> {
+  return invoke('read_files_batch', { paths, maxLines });
+}
+
+// ─── Repo Map ───
+
+export async function generateRepoMap(root: string): Promise<string> {
+  return invoke('generate_repo_map', { root });
+}
+
 // ─── Web ───
 
 export async function fetchUrl(url: string): Promise<string> {

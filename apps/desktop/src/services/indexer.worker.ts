@@ -1,27 +1,81 @@
 import { pipeline, env } from '@xenova/transformers';
 
-env.allowLocalModels = false;
+// CRITICAL: Allow local cached models so the indexer works offline.
+// The model is downloaded once and cached in the browser's Cache API.
+env.allowLocalModels = true;
 env.useBrowserCache = true;
 
 let modelPipeline: any = null;
+let initFailed = false;
 
 async function initPipeline() {
-  if (!modelPipeline) {
+  if (initFailed) return; // Don't retry if model download failed (offline)
+  if (modelPipeline) return;
+  
+  try {
     modelPipeline = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+  } catch (err) {
+    initFailed = true;
+    console.warn('[Indexer] Model init failed (likely offline). Semantic search disabled.', err);
+    self.postMessage({ type: 'error', payload: 'Semantic search unavailable — model not cached and offline.' });
   }
+}
+
+// Symbol boundary patterns for splitting code at natural boundaries
+const BOUNDARY_PATTERNS = [
+  /^(?:export\s+)?(?:async\s+)?function\s+/,
+  /^(?:export\s+)?(?:default\s+)?class\s+/,
+  /^(?:export\s+)?interface\s+/,
+  /^(?:export\s+)?type\s+/,
+  /^(?:export\s+)?enum\s+/,
+  /^(?:pub\s+)?(?:async\s+)?fn\s+/,
+  /^(?:pub\s+)?struct\s+/,
+  /^(?:pub\s+)?enum\s+/,
+  /^impl\s+/,
+  /^def\s+/,
+  /^class\s+/,
+];
+
+function isBoundary(line: string): boolean {
+  const trimmed = line.trim();
+  return BOUNDARY_PATTERNS.some(p => p.test(trimmed));
 }
 
 function chunkContent(content: string, path: string) {
   const chunks: Array<{ path: string; text: string }> = [];
-  const chunkSize = 800; // slightly larger chunks
-  const overlap = 200;
-  
   if (content.length === 0) return chunks;
 
-  for (let i = 0; i < content.length; i += chunkSize - overlap) {
-    const text = content.substring(i, i + chunkSize);
-    chunks.push({ path, text });
+  const lines = content.split('\n');
+  const MAX_CHUNK_LINES = 60;
+  const MIN_CHUNK_LINES = 10;
+
+  let currentChunk: string[] = [];
+  let lineCount = 0;
+
+  for (const line of lines) {
+    // If we hit a boundary and have enough lines, flush the current chunk
+    if (isBoundary(line) && lineCount >= MIN_CHUNK_LINES) {
+      chunks.push({ path, text: currentChunk.join('\n') });
+      currentChunk = [];
+      lineCount = 0;
+    }
+
+    currentChunk.push(line);
+    lineCount++;
+
+    // Force flush if chunk is too large
+    if (lineCount >= MAX_CHUNK_LINES) {
+      chunks.push({ path, text: currentChunk.join('\n') });
+      currentChunk = [];
+      lineCount = 0;
+    }
   }
+
+  // Flush remaining
+  if (currentChunk.length > 0) {
+    chunks.push({ path, text: currentChunk.join('\n') });
+  }
+
   return chunks;
 }
 
@@ -36,6 +90,11 @@ self.onmessage = async (e: MessageEvent) => {
     const { files } = payload;
     await initPipeline();
 
+    // Graceful offline degradation: skip embedding if model not available
+    if (!modelPipeline) {
+      self.postMessage({ type: 'done', payload: [], id });
+      return;
+    }
     const allChunks: Array<{ path: string; text: string }> = [];
     for (const file of files) {
       allChunks.push(...chunkContent(file.content, file.path));
@@ -75,6 +134,12 @@ self.onmessage = async (e: MessageEvent) => {
   else if (type === 'search') {
     const { query, chunks, topK } = payload;
     await initPipeline();
+
+    // Graceful offline degradation
+    if (!modelPipeline) {
+      self.postMessage({ type: 'searchResults', payload: [], id });
+      return;
+    }
     
     const queryResult = await modelPipeline(query, { pooling: 'mean', normalize: true });
     const queryEmbedding = Array.from(queryResult.data) as number[];

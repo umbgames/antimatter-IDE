@@ -1,3 +1,5 @@
+import { loader } from '@monaco-editor/react';
+import * as monaco from 'monaco-editor';
 import Editor from '@monaco-editor/react';
 import type { OpenFile } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
@@ -5,6 +7,11 @@ import { chatWithProvider } from '@/lib/tauri';
 import { useRef, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { LspClient } from '@/lib/LspClient';
+
+// ─── CRITICAL FIX: Use local monaco-editor bundle instead of CDN ───
+// This prevents the editor from downloading ~5MB from unpkg.com on every launch
+// and makes file opening work completely offline.
+loader.config({ monaco });
 
 export function EditorShell() {
   const { openFiles, activeFilePath, theme, openFile, closeFile, updateOpenFileContent, selectedProviderId, inlineCompletionsEnabled, workspacePath } = useAppStore();
@@ -63,10 +70,18 @@ export function EditorShell() {
         await new Promise(r => setTimeout(r, 600));
 
         try {
+          const startLine = Math.max(1, position.lineNumber - 50);
+          const codeBeforeCursor = model.getValueInRange({ 
+            startLineNumber: startLine, 
+            startColumn: 1, 
+            endLineNumber: position.lineNumber, 
+            endColumn: position.column 
+          });
+
           const prompt = `You are a code completion engine. Complete the following code line:
           FILE: ${activeFile.path}
-          CODE UNTIL CURSOR: 
-          ${model.getValueInRange({ startLineNumber: 1, startColumn: 1, endLineNumber: position.lineNumber, endColumn: position.column })}
+          CODE UNTIL CURSOR (last 50 lines): 
+          ${codeBeforeCursor}
           
           PROVIDE ONLY THE REMAINING CODE FOR THE CURRENT LINE OR BLOCK. NO EXPLANATIONS.`;
 
@@ -190,7 +205,7 @@ export function EditorShell() {
   useEffect(() => {
     if (!workspacePath || !activeFile) return;
 
-    // Auto-spawn LSPs based on common languages
+    // Auto-spawn LSPs based on common languages (fire-and-forget, non-blocking)
     const lang = activeFile.language;
     if (!lspClients.current.has(lang)) {
         let binPath = '';
@@ -201,11 +216,15 @@ export function EditorShell() {
         if (binPath) {
             const client = new LspClient(lang, binPath, workspacePath);
             lspClients.current.set(lang, client);
-            client.start().catch(console.error);
+            // Non-blocking: don't await — LSP init happens in background
+            client.start().catch((err) => {
+              console.warn(`[LSP] Failed to start ${binPath}:`, err);
+              lspClients.current.delete(lang);
+            });
         }
     }
 
-    // Notify LSP of document switch
+    // Notify LSP of document switch (non-blocking)
     const client = lspClients.current.get(lang);
     if (client) {
         client.notifyDocumentOpened(activeFile.path, activeFile.content, 1);

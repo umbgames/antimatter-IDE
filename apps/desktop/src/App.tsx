@@ -102,10 +102,13 @@ export function App() {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
-  // Index workspace for semantic search
+  // Index workspace for semantic search — only once per workspace open
+  const hasIndexed = useRef(false);
   useEffect(() => {
-    if (workspacePath && workspaceEntries.length > 0) {
-       const version = ++indexingVersion.current;
+    if (!workspacePath) { hasIndexed.current = false; return; }
+    if (hasIndexed.current) return;
+    hasIndexed.current = true;
+    const version = ++indexingVersion.current;
        const runIndexing = async () => {
          try {
            // Small delay to let the UI settle after opening a workspace
@@ -155,9 +158,8 @@ export function App() {
            useAppStore.getState().setIndexingProgress({ status: 'idle', current: 0, total: 0 });
          }
        };
-       runIndexing();
-    }
-  }, [workspacePath, workspaceEntries]);
+    runIndexing();
+  }, [workspacePath]);
 
   useEffect(() => {
     void Promise.all([loadSettings(), getRecentProjects(), loadProviders()])
@@ -263,14 +265,21 @@ export function App() {
   }, [paletteItems, registerPaletteItems]);
 
   /* ─── File Watcher (auto-refresh explorer) ─── */
+  const prevEntriesRef = useRef<string>('');
   useEffect(() => {
     if (!workspacePath) return;
+    // Use a longer interval (15s) and shallow-compare to avoid unnecessary re-renders
     const interval = setInterval(async () => {
       try {
         const entries = await readDirectory(workspacePath);
-        setWorkspaceEntries(entries);
+        // Only update state if the file list actually changed
+        const snapshot = entries.map((e: any) => e.path).join('|');
+        if (snapshot !== prevEntriesRef.current) {
+          prevEntriesRef.current = snapshot;
+          setWorkspaceEntries(entries);
+        }
       } catch { /* ignore */ }
-    }, 5000);
+    }, 15000);
     return () => clearInterval(interval);
   }, [workspacePath, setWorkspaceEntries]);
 
@@ -290,11 +299,22 @@ export function App() {
     useAppStore.getState().setAgentBackups({});
 
     const state = useAppStore.getState();
+
+    // Auto-generate repo map for workspace context
+    let repoMap: string | undefined;
+    if (state.workspacePath) {
+      try {
+        const tauri = await import('./lib/tauri');
+        repoMap = await tauri.generateRepoMap(state.workspacePath);
+      } catch { /* non-critical */ }
+    }
+
     const context = {
       provider: selectedProvider,
       messages: [...state.messages],
       workspacePath: state.workspacePath || undefined,
       persona: state.activePersona,
+      repoMap,
       onTokensUsed: (tokens: number) => {
         useAppStore.getState().incrementSessionTokens(tokens);
       },
@@ -331,6 +351,16 @@ export function App() {
            state.setAgentBackups({ ...state.agentBackups, [filePath]: null });
         }
       };
+
+      const refreshOpenTab = (filePath: string, newContent: string) => {
+        const state = useAppStore.getState();
+        const isOpen = state.openFiles.some(f => f.path === filePath);
+        if (isOpen) {
+          state.updateOpenFileContent(filePath, newContent);
+          // Auto-save the file locally marked so it doesn't show as dirty if the agent wrote it directly to disk
+          state.saveFileLocallyMarked(filePath);
+        }
+      };
       
       switch (toolId) {
         case 'read-file': {
@@ -357,6 +387,9 @@ export function App() {
           
           const diffResult = await calculateLineDiff(original, proposed);
           useAppStore.getState().updateAIEdits(args.path, diffResult);
+
+          // Hot-reload: if this file is open in a tab, update its content live
+          refreshOpenTab(args.path, proposed);
           
           return `Successfully wrote to ${args.path}`;
         }
@@ -376,6 +409,9 @@ export function App() {
           
           const diffResult = await calculateLineDiff(original, proposed);
           useAppStore.getState().updateAIEdits(args.path, diffResult);
+
+          // Hot-reload open tab
+          refreshOpenTab(args.path, proposed);
           
           return `Successfully patched ${args.path}`;
         }
@@ -394,8 +430,11 @@ export function App() {
           const proposed = lines.join('\n');
           await tauri.writeWorkspaceFile(args.path, proposed);
           
-          const diffResult = await calculateLineDiff(original, proposed);
-          useAppStore.getState().updateAIEdits(args.path, diffResult);
+          const diffResult3 = await calculateLineDiff(original, proposed);
+          useAppStore.getState().updateAIEdits(args.path, diffResult3);
+
+          // Hot-reload open tab
+          refreshOpenTab(args.path, proposed);
           
           return `Successfully replaced lines ${startIdx + 1} to ${endIdx + 1} in ${args.path}`;
         }
@@ -423,6 +462,13 @@ export function App() {
         case 'query-codebase': {
           const results = await codebaseIndexer.search(args.query);
           return results.map(r => ({ path: r.path, text: r.text }));
+        }
+        case 'find-symbols': {
+          if (!currentPath) throw new Error('No workspace open');
+          return await tauri.findSymbols(currentPath, args.name, args.kind, args.include);
+        }
+        case 'read-files': {
+          return await tauri.readFilesBatch(args.paths, args.max_lines);
         }
         case 'terminal-exec': {
           if (!currentPath) throw new Error('No workspace open');

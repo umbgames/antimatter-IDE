@@ -2,16 +2,18 @@ import { useRef, useEffect } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { Command } from '@tauri-apps/plugin-shell';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 export function BottomPanel() {
   const { bottomPanelTab, setBottomPanelTab, workspacePath } = useAppStore();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const childRef = useRef<any>(null);
+  const unlistenRef = useRef<(() => void) | null>(null);
+  const ptySpawnedRef = useRef(false);
 
-  // Subscribe to agent output
+  // Subscribe to agent output queue (for agent-driven terminal writes)
   useEffect(() => {
     const unsub = useAppStore.subscribe(
       (state) => {
@@ -31,118 +33,110 @@ export function BottomPanel() {
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
-      fontFamily: 'var(--font-mono)',
+      fontFamily: "'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace",
       theme: {
         background: '#08090d',
         foreground: '#c8d0e0',
-        cursor: '#6366f1'
+        cursor: '#6366f1',
+        cursorAccent: '#08090d',
+        selectionBackground: 'rgba(99, 102, 241, 0.3)',
+        black: '#1a1b26',
+        red: '#f7768e',
+        green: '#9ece6a',
+        yellow: '#e0af68',
+        blue: '#7aa2f7',
+        magenta: '#bb9af7',
+        cyan: '#7dcfff',
+        white: '#c0caf5',
+        brightBlack: '#414868',
+        brightRed: '#f7768e',
+        brightGreen: '#9ece6a',
+        brightYellow: '#e0af68',
+        brightBlue: '#7aa2f7',
+        brightMagenta: '#bb9af7',
+        brightCyan: '#7dcfff',
+        brightWhite: '#c0caf5',
       },
-      convertEol: true
+      convertEol: true,
+      scrollback: 5000,
+      allowProposedApi: true,
     });
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(terminalRef.current);
-    fitAddon.fit();
+
+    // Small delay to ensure the container has real dimensions before fitting
+    setTimeout(() => fitAddon.fit(), 50);
 
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
 
-
-
-    const startShell = async () => {
-      let currentCwd = workspacePath || '';
-      term.writeln(`\x1B[32mAntimatter Terminal\x1B[0m`);
-      
-      let commandBuffer = '';
-      let isExecuting = false;
-      const prompt = () => term.write(`\r\n\x1B[32m${currentCwd || '~'}>\x1B[0m `);
-      prompt();
-
-      // Route keystrokes and execute commands
-      term.onData(async (data) => {
-        if (isExecuting) return; // Ignore input while command is running
-
-        const code = data.charCodeAt(0);
-        if (code === 13) { // Enter
-          term.write('\r\n');
-          const cmdText = commandBuffer.trim();
-          commandBuffer = '';
-
-          if (cmdText) {
-            isExecuting = true;
-            try {
-              // Handle CD explicitly to track the directory in the REPL
-              if (cmdText.trim().toLowerCase().startsWith('cd ')) {
-                const target = cmdText.trim().substring(3).trim();
-                const cdCmd = Command.create('powershell', ['-NoLogo', '-Command', `cd '${target}'; (Get-Location).Path`], { cwd: currentCwd || undefined });
-                const output = await cdCmd.execute();
-                if (output.code === 0) {
-                  currentCwd = output.stdout.trim();
-                } else {
-                  term.write(`\x1B[31m${output.stderr.trim()}\x1B[0m\r\n`);
-                }
-              } else {
-                const cmd = Command.create('powershell', ['-NoLogo', '-Command', cmdText], { cwd: currentCwd || undefined });
-                
-                cmd.stdout.on('data', (line) => {
-                  term.write(line + '\r\n');
-                });
-                cmd.stderr.on('data', (line) => {
-                  term.write(`\x1B[31m${line}\x1B[0m\r\n`);
-                });
-
-                const child = await cmd.spawn();
-                childRef.current = child;
-
-                await new Promise((resolve) => {
-                  cmd.on('close', ({ code }: any) => {
-                    if (code !== 0 && code !== null) {
-                      term.write(`\x1B[90m[Exit code: ${code}]\x1B[0m\r\n`);
-                    }
-                    resolve(null);
-                  });
-                  cmd.on('error', () => resolve(null));
-                });
-              }
-            } catch (e: any) {
-              term.write(`\r\n\x1B[31mError: ${e.message}\x1B[0m\r\n`);
-            } finally {
-              isExecuting = false;
-              childRef.current = null;
-              prompt();
-            }
-          } else {
-            prompt();
+    // ─── Real PTY Connection ───
+    const connectPty = async () => {
+      try {
+        // Listen for output from the PTY backend
+        const unlisten = await listen<string>('pty-output', (event) => {
+          if (xtermRef.current) {
+            xtermRef.current.write(event.payload);
           }
-        } else if (code === 127 || code === 8) { // Backspace
-          if (commandBuffer.length > 0) {
-            commandBuffer = commandBuffer.slice(0, -1);
-            term.write('\b \b');
-          }
-        } else {
-          commandBuffer += data;
-          term.write(data);
-        }
-      });
+        });
+        unlistenRef.current = unlisten;
+
+        // Spawn the real PTY shell
+        const dims = fitAddon.proposeDimensions();
+        await invoke('spawn_pty', {
+          cwd: workspacePath || null,
+          rows: dims?.rows || 24,
+          cols: dims?.cols || 80,
+        });
+        ptySpawnedRef.current = true;
+
+        // Forward ALL keystrokes from xterm directly to the PTY stdin
+        term.onData((data) => {
+          invoke('write_pty', { data }).catch((err) => {
+            console.error('PTY write error:', err);
+          });
+        });
+
+        // Forward binary data (e.g. special keys) too
+        term.onBinary((data) => {
+          invoke('write_pty', { data }).catch((err) => {
+            console.error('PTY binary write error:', err);
+          });
+        });
+
+      } catch (err) {
+        console.error('Failed to spawn PTY:', err);
+        term.writeln(`\x1B[31mFailed to start terminal: ${err}\x1B[0m`);
+        term.writeln('\x1B[90mFalling back to display-only mode.\x1B[0m');
+      }
     };
-    
-    startShell();
 
+    connectPty();
+
+    // Handle window resize → refit terminal
     const handleResize = () => {
       fitAddon.fit();
+      // Notify backend of new size
+      if (ptySpawnedRef.current) {
+        const dims = fitAddon.proposeDimensions();
+        if (dims) {
+          invoke('resize_pty', { rows: dims.rows, cols: dims.cols }).catch(() => {});
+        }
+      }
     };
     window.addEventListener('resize', handleResize);
 
-    // Expose to agent tools
+    // Expose terminal buffer to agent tools for reading console output
     (window as any)._antimatterReadConsole = () => {
       if (!term) return 'Terminal not initialized.';
       const buffer = term.buffer.active;
       let text = '';
-      const start = Math.max(0, buffer.length - 200); // last 200 lines
+      const start = Math.max(0, buffer.length - 200);
       for (let i = start; i < buffer.length; i++) {
-         const line = buffer.getLine(i);
-         if (line) text += line.translateToString(true) + '\n';
+        const line = buffer.getLine(i);
+        if (line) text += line.translateToString(true) + '\n';
       }
       return text;
     };
@@ -150,14 +144,17 @@ export function BottomPanel() {
     return () => {
       window.removeEventListener('resize', handleResize);
       delete (window as any)._antimatterReadConsole;
-      if (childRef.current) {
-         childRef.current.kill().catch(() => {});
+      if (unlistenRef.current) {
+        unlistenRef.current();
+        unlistenRef.current = null;
       }
       term.dispose();
       xtermRef.current = null;
+      ptySpawnedRef.current = false;
     };
   }, [workspacePath]);
 
+  // Refit terminal when the tab becomes visible or panel resizes
   useEffect(() => {
     if (bottomPanelTab === 'terminal' && fitAddonRef.current) {
       setTimeout(() => fitAddonRef.current?.fit(), 0);

@@ -601,23 +601,36 @@ textarea { resize: vertical; }
   flex-direction: column;
   min-height: 0;
   flex: 1;
-}
-.terminal-input-row {
-  display: flex;
-  gap: 4px;
-  padding: 6px 8px;
+  overflow: hidden;
 }
 .terminal-output {
   margin: 0;
-  padding: 8px 12px;
-  font-family: var(--font-mono);
-  font-size: 12px;
+  padding: 0;
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 14px;
   background: #08090d;
   color: #c8d0e0;
   min-height: 60px;
-  overflow: auto;
+  overflow: hidden;
   flex: 1;
   border-top: 1px solid var(--border);
+}
+.terminal-output .xterm {
+  height: 100%;
+  padding: 4px 0 0 4px;
+}
+.terminal-output .xterm-viewport {
+  overflow-y: auto !important;
+}
+.terminal-output .xterm-viewport::-webkit-scrollbar {
+  width: 6px;
+}
+.terminal-output .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+.terminal-output .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 /* ─── Agent Panel ─── */
