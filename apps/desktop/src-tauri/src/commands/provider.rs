@@ -475,7 +475,6 @@ async fn send_openai_compatible_chat_stream(
 
         let mut full_content = String::new();
         let mut tool_calls_map: std::collections::BTreeMap<usize, ToolCall> = std::collections::BTreeMap::new();
-        let mut stream_error = false;
 
         while let Some(chunk_res) = response.chunk().await.ok() {
             let chunk = match chunk_res {
