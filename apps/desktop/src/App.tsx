@@ -70,7 +70,6 @@ export function App() {
   const openFiles = useAppStore(s => s.openFiles);
   const activeFilePath = useAppStore(s => s.activeFilePath);
   const workspacePath = useAppStore(s => s.workspacePath);
-  const workspaceEntries = useAppStore(s => s.workspaceEntries);
   const providerConfigs = useAppStore(s => s.providerConfigs);
   const selectedProviderId = useAppStore(s => s.selectedProviderId);
   const bottomPanelOpen = useAppStore(s => s.bottomPanelOpen);
