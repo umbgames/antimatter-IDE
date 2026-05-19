@@ -234,7 +234,6 @@ function simpleLevenshtein(a: string, b: string): number {
  */
 function buildGenerationPrompt(
   fileName: string,
-  workspacePath?: string,
   nearbyFiles?: string[]
 ): RuntimeChatMessage[] {
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
@@ -321,7 +320,6 @@ class LearnerEngineImpl {
     fileId: string,
     fileName: string,
     providerId: string,
-    workspacePath?: string,
     nearbyFiles?: string[]
   ): Promise<void> {
     // Avoid duplicate sessions
@@ -347,7 +345,7 @@ class LearnerEngineImpl {
     this.notify();
 
     try {
-      const messages = buildGenerationPrompt(fileName, workspacePath, nearbyFiles);
+      const messages = buildGenerationPrompt(fileName, nearbyFiles);
       const response = await chatWithProvider(providerId, messages);
 
       let code = response.content?.trim() ?? '';

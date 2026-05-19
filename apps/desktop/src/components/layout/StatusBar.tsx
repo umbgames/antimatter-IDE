@@ -14,12 +14,12 @@ export function StatusBar({ onToggleProviders }: Props) {
   const provider = providerConfigs.find((entry: ProviderConfig) => entry.id === selectedProviderId);
 
   // Subscribe to learner engine for live progress
-  const sessions = useSyncExternalStore(
+  const _sessions = useSyncExternalStore(
     (cb) => learnerEngine.subscribe(cb),
     () => learnerEngine.getSnapshot()
   );
+  void _sessions;
 
-  const activeSession = activeFilePath ? learnerEngine.getSession(activeFilePath) : undefined;
   const learnerProgress = activeFilePath ? learnerEngine.getProgress(activeFilePath) : 0;
   const learnerStatus = activeFilePath ? learnerEngine.getStatus(activeFilePath) : 'idle';
 

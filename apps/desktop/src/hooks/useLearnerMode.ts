@@ -4,7 +4,7 @@
 // and progressive reveal rendering.
 
 import { useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
-import { learnerEngine, type LearnerSession, type LearnerStatus } from '@/services/LearnerEngine';
+import { learnerEngine, type LearnerStatus } from '@/services/LearnerEngine';
 import { useAppStore } from '@/store/appStore';
 
 interface UseLearnerModeOptions {
@@ -47,16 +47,14 @@ export function useLearnerMode({
   const lastSyncedContentRef = useRef<string>('');
 
   const selectedProviderId = useAppStore(s => s.selectedProviderId);
-  const workspacePath = useAppStore(s => s.workspacePath);
-  const theme = useAppStore(s => s.theme);
 
   // Subscribe to learner engine state changes
-  const sessions = useSyncExternalStore(
+  const _sessions = useSyncExternalStore(
     (cb) => learnerEngine.subscribe(cb),
     () => learnerEngine.getSnapshot()
   );
+  void _sessions;
 
-  const session = filePath ? learnerEngine.getSession(filePath) : undefined;
   const status = filePath ? learnerEngine.getStatus(filePath) : 'idle';
   const progress = filePath ? learnerEngine.getProgress(filePath) : 0;
   const isActive = status === 'active';
@@ -156,7 +154,6 @@ export function useLearnerMode({
       if (!model) return;
 
       const currentContent = model.getValue();
-      const prevContent = lastSyncedContentRef.current;
 
       // Process each change
       for (const change of e.changes) {
@@ -231,10 +228,9 @@ export function useLearnerMode({
       filePath,
       fileName,
       selectedProviderId,
-      workspacePath || undefined,
       nearbyFiles
     );
-  }, [filePath, fileName, selectedProviderId, enabled, workspacePath]);
+  }, [filePath, fileName, selectedProviderId, enabled]);
 
   // ─── End Session ───
   const endSession = useCallback(() => {

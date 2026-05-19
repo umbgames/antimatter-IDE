@@ -4,7 +4,7 @@ import Editor from '@monaco-editor/react';
 import type { OpenFile } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { chatWithProvider } from '@/lib/tauri';
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect } from 'react';
 import { X, GraduationCap, Loader2 } from 'lucide-react';
 import { LspClient } from '@/lib/LspClient';
 import { useLearnerMode } from '@/hooks/useLearnerMode';
