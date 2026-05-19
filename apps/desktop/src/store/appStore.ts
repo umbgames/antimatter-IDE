@@ -53,6 +53,7 @@ interface AppState {
   gitStatus?: GitStatus;
   pendingChange?: DiffPreview;
   inlineCompletionsEnabled: boolean;
+  learnerModeEnabled: boolean;
   activePersona: 'engineer' | 'architect' | 'qa';
 
   // ─── New State ───
@@ -91,6 +92,7 @@ interface AppState {
   refreshGitStatus: () => Promise<void>;
   setPendingChange: (change?: DiffPreview) => void;
   setInlineCompletionsEnabled: (enabled: boolean) => void;
+  setLearnerModeEnabled: (enabled: boolean) => void;
   setActivePersona: (persona: 'engineer' | 'architect' | 'qa') => void;
   setWorkspace: (path: string | null, entries: WorkspaceEntry[]) => void;
 
@@ -141,6 +143,7 @@ export const useAppStore = create<AppState>((set) => ({
   recentProjects: [],
   providerConfigs: initialProviders,
   inlineCompletionsEnabled: true,
+  learnerModeEnabled: false,
   activePersona: 'engineer',
   messages: [INITIAL_SYSTEM_MESSAGE],
   actionLogs: [],
@@ -233,6 +236,7 @@ export const useAppStore = create<AppState>((set) => ({
   },
   setPendingChange: (pendingChange) => set({ pendingChange }),
   setInlineCompletionsEnabled: (inlineCompletionsEnabled) => set({ inlineCompletionsEnabled }),
+  setLearnerModeEnabled: (learnerModeEnabled) => set({ learnerModeEnabled }),
   setActivePersona: (activePersona) => set({ activePersona }),
 
   // ─── New Actions ───

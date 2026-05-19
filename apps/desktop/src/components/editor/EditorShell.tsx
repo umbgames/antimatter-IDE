@@ -4,9 +4,11 @@ import Editor from '@monaco-editor/react';
 import type { OpenFile } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
 import { chatWithProvider } from '@/lib/tauri';
-import { useRef, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { useRef, useEffect, useCallback } from 'react';
+import { X, GraduationCap, Loader2 } from 'lucide-react';
 import { LspClient } from '@/lib/LspClient';
+import { useLearnerMode } from '@/hooks/useLearnerMode';
+import { learnerEngine } from '@/services/LearnerEngine';
 
 // ─── CRITICAL FIX: Use local monaco-editor bundle instead of CDN ───
 // This prevents the editor from downloading ~5MB from unpkg.com on every launch
@@ -15,6 +17,7 @@ loader.config({ monaco });
 
 export function EditorShell() {
   const { openFiles, activeFilePath, theme, openFile, closeFile, updateOpenFileContent, selectedProviderId, inlineCompletionsEnabled, workspacePath } = useAppStore();
+  const learnerModeEnabled = useAppStore(s => s.learnerModeEnabled);
   const completionProviderRef = useRef<any>(null);
   const hoverProviderRef = useRef<any>(null);
   const lspCompleteRef = useRef<any>(null);
@@ -24,6 +27,48 @@ export function EditorShell() {
   const monacoRef = useRef<any>(null);
   const decorationsCollectionRef = useRef<any>(null);
   const aiEdits = useAppStore(s => s.aiEdits);
+
+  // ─── Learner Mode Integration ───
+  const {
+    status: learnerStatus,
+    progress: learnerProgress,
+    isActive: learnerIsActive,
+    triggerGeneration,
+    endSession: endLearnerSession
+  } = useLearnerMode({
+    editor: monacoEditorRef.current,
+    monaco: monacoRef.current,
+    filePath: activeFile?.path,
+    fileName: activeFile?.name,
+    enabled: learnerModeEnabled
+  });
+
+  // Auto-trigger learner mode when a new empty file is created/opened with learner mode enabled
+  const prevFileRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!learnerModeEnabled || !activeFile || !selectedProviderId) return;
+    
+    // Only trigger for new files or files that just opened and are empty
+    const isNewFile = activeFile.path !== prevFileRef.current;
+    const isEmpty = activeFile.content.trim().length === 0;
+    const isNotUntitled = !activeFile.path.startsWith('untitled-'); // Only for named files
+    const hasNoSession = !learnerEngine.getSession(activeFile.path);
+    
+    if (isNewFile && isEmpty && isNotUntitled && hasNoSession) {
+      triggerGeneration();
+    }
+    
+    prevFileRef.current = activeFile.path;
+  }, [activeFile?.path, learnerModeEnabled, selectedProviderId, triggerGeneration]);
+
+  // Clean up learner session when file closes
+  useEffect(() => {
+    return () => {
+      if (activeFile?.path) {
+        learnerEngine.endSession(activeFile.path);
+      }
+    };
+  }, []);
 
   const handleEditorWillMount = (monaco: any) => {
     monaco.editor.defineTheme('antimatter-dark', {
@@ -55,6 +100,8 @@ export function EditorShell() {
 
     completionProviderRef.current = monaco.languages.registerInlineCompletionsProvider({ pattern: '**' }, {
       provideInlineCompletions: async (model: any, position: any) => {
+        // ─── Learner Mode takes priority: disable inline completions ───
+        if (learnerModeEnabled) return;
         if (!inlineCompletionsEnabled || !selectedProviderId) return;
 
         const linePrefix = model.getValueInRange({
@@ -285,6 +332,55 @@ export function EditorShell() {
           </div>
         ))}
       </div>
+
+      {/* ─── Learner Mode Status Bar ─── */}
+      {learnerModeEnabled && activeFile && (
+        <div className={`learner-status-bar ${learnerStatus}`}>
+          <div className="learner-status-left">
+            {learnerStatus === 'generating' && (
+              <>
+                <Loader2 size={13} className="spin" />
+                <span>Generating implementation for <strong>{activeFile.name}</strong>...</span>
+              </>
+            )}
+            {learnerStatus === 'active' && (
+              <>
+                <GraduationCap size={13} />
+                <span>Learner Mode active — type to reveal code</span>
+                <span className="learner-progress-text">{learnerProgress}%</span>
+              </>
+            )}
+            {learnerStatus === 'idle' && activeFile.content.trim().length === 0 && !activeFile.path.startsWith('untitled-') && (
+              <>
+                <GraduationCap size={13} />
+                <button className="learner-trigger-btn" onClick={triggerGeneration}>
+                  Start Learner Mode for {activeFile.name}
+                </button>
+              </>
+            )}
+            {learnerStatus === 'error' && (
+              <>
+                <span style={{ color: 'var(--danger)' }}>Generation failed</span>
+                <button className="learner-trigger-btn" onClick={triggerGeneration}>Retry</button>
+              </>
+            )}
+            {learnerStatus === 'completed' && (
+              <span style={{ color: 'var(--success)' }}>✓ Implementation complete!</span>
+            )}
+          </div>
+          {learnerIsActive && (
+            <div className="learner-status-right">
+              <div className="learner-progress-bar">
+                <div className="learner-progress-fill" style={{ width: `${learnerProgress}%` }} />
+              </div>
+              <button className="learner-end-btn" onClick={endLearnerSession} title="End learner session">
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="editor-surface">
         <Editor
           path={activeFile.path}
@@ -302,7 +398,7 @@ export function EditorShell() {
             smoothScrolling: true,
             padding: { top: 16 },
             automaticLayout: true,
-            inlineSuggest: { enabled: true },
+            inlineSuggest: { enabled: !learnerModeEnabled },
             suggest: { showInlineDetails: true }
           }}
         />

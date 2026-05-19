@@ -1,4 +1,5 @@
 import { useAppStore } from '@/store/appStore';
+import { learnerEngine } from '@/services/LearnerEngine';
 
 interface Props {
   open: boolean;
@@ -21,6 +22,7 @@ export function SettingsDrawer({ open, onClose }: Props) {
     bottomPanelOpen, toggleBottomPanel,
     providerConfigs, selectedProviderId, setSelectedProviderId,
     inlineCompletionsEnabled, setInlineCompletionsEnabled,
+    learnerModeEnabled, setLearnerModeEnabled,
     fileWatcherEnabled, setFileWatcherEnabled,
     clearConversation
   } = useAppStore();
@@ -84,6 +86,29 @@ export function SettingsDrawer({ open, onClose }: Props) {
             <label className="checkbox-row" style={{ marginTop: '12px' }}>
               <input type="checkbox" checked={inlineCompletionsEnabled} onChange={(e) => setInlineCompletionsEnabled(e.target.checked)} />
               <span>Enable Inline AI Autocomplete (Ghost Text)</span>
+            </label>
+            <label className="checkbox-row learner-mode-toggle" style={{ marginTop: '8px' }}>
+              <input 
+                type="checkbox" 
+                checked={learnerModeEnabled} 
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  setLearnerModeEnabled(enabled);
+                  if (!enabled) {
+                    learnerEngine.clearAll();
+                  }
+                  // Learner mode takes priority over inline completions
+                  if (enabled && inlineCompletionsEnabled) {
+                    setInlineCompletionsEnabled(false);
+                  }
+                }} 
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <span>Learner Mode</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                  AI generates code from filenames and teaches you to write it token-by-token
+                </span>
+              </div>
             </label>
             <label className="checkbox-row" style={{ marginTop: '8px' }}>
               <input type="checkbox" checked={bottomPanelOpen} onChange={toggleBottomPanel} />

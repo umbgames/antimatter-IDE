@@ -1527,3 +1527,245 @@ textarea { resize: vertical; }
 .ai-added-line-gutter {
   border-left: 3px solid #3fb950 !important;
 }
+
+/* ─── Learner Mode ─── */
+
+/* Ghost Text — the core visual element of Learner Mode.
+   Must be faint, inline, non-selectable, and theme-adaptive. */
+
+:root[data-theme='dark'] {
+  --learner-ghost: rgba(139, 148, 186, 0.45);
+  --learner-ghost-bg: transparent;
+  --learner-accent: #818cf8;
+  --learner-accent-subtle: rgba(129, 140, 248, 0.08);
+  --learner-progress-track: rgba(255, 255, 255, 0.06);
+  --learner-progress-fill: linear-gradient(90deg, #6366f1, #a78bfa);
+  --learner-mismatch: rgba(251, 146, 60, 0.5);
+  --learner-statusbar: rgba(129, 140, 248, 0.15);
+}
+
+:root[data-theme='light'] {
+  --learner-ghost: rgba(100, 116, 139, 0.42);
+  --learner-ghost-bg: transparent;
+  --learner-accent: #4f46e5;
+  --learner-accent-subtle: rgba(79, 70, 229, 0.06);
+  --learner-progress-track: rgba(0, 0, 0, 0.06);
+  --learner-progress-fill: linear-gradient(90deg, #4f46e5, #7c3aed);
+  --learner-mismatch: rgba(234, 88, 12, 0.45);
+  --learner-statusbar: rgba(79, 70, 229, 0.12);
+}
+
+/* Ghost text rendered via Monaco content widget */
+.learner-ghost-text {
+  color: var(--learner-ghost) !important;
+  background: var(--learner-ghost-bg) !important;
+  pointer-events: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  position: relative;
+  z-index: 1;
+  font-style: italic;
+  opacity: 0.9;
+  animation: learner-ghost-fade-in 150ms ease;
+}
+
+@keyframes learner-ghost-fade-in {
+  from { opacity: 0; }
+  to { opacity: 0.9; }
+}
+
+/* Learner Status Bar (inside editor, below tabs) */
+.learner-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  background: var(--learner-accent-subtle);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-height: 28px;
+  gap: 12px;
+  animation: learner-bar-in 200ms ease;
+}
+
+@keyframes learner-bar-in {
+  from { opacity: 0; max-height: 0; padding: 0 12px; }
+  to { opacity: 1; max-height: 40px; padding: 4px 12px; }
+}
+
+.learner-status-bar.generating {
+  background: var(--learner-accent-subtle);
+  border-bottom-color: var(--learner-accent);
+}
+
+.learner-status-bar.active {
+  background: var(--learner-accent-subtle);
+}
+
+.learner-status-bar.error {
+  background: rgba(239, 68, 68, 0.06);
+  border-bottom-color: var(--danger);
+}
+
+.learner-status-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.learner-status-left strong {
+  color: var(--learner-accent);
+  font-weight: 600;
+}
+
+.learner-status-left svg {
+  color: var(--learner-accent);
+  flex-shrink: 0;
+}
+
+.learner-progress-text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--learner-accent);
+  background: var(--learner-accent-subtle);
+  padding: 1px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+.learner-status-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Progress bar */
+.learner-progress-bar {
+  width: 120px;
+  height: 4px;
+  background: var(--learner-progress-track);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.learner-progress-fill {
+  height: 100%;
+  background: var(--learner-progress-fill);
+  border-radius: 2px;
+  transition: width 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.learner-progress-fill::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 20px;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3));
+  animation: learner-progress-shimmer 1.5s infinite;
+}
+
+@keyframes learner-progress-shimmer {
+  0% { opacity: 0; }
+  50% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Trigger button */
+.learner-trigger-btn {
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--learner-accent);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.learner-trigger-btn:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+/* End session button */
+.learner-end-btn {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  line-height: 1;
+}
+
+.learner-end-btn:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: white;
+}
+
+/* StatusBar badge */
+.learner-statusbar-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 8px;
+  background: var(--learner-statusbar);
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.02em;
+}
+
+.learner-statusbar-badge.active {
+  animation: learner-badge-pulse 2s infinite ease-in-out;
+}
+
+.learner-statusbar-badge.generating {
+  animation: learner-badge-pulse 1s infinite ease-in-out;
+}
+
+@keyframes learner-badge-pulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+/* Settings toggle enhancement */
+.learner-mode-toggle {
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-muted);
+  transition: all var(--transition-fast);
+  align-items: flex-start !important;
+}
+
+.learner-mode-toggle:has(input:checked) {
+  border-color: var(--learner-accent);
+  background: var(--learner-accent-subtle);
+}
+
+/* Tab enhancement for learner-active files */
+.tab.learner-active {
+  border-bottom-color: var(--learner-accent) !important;
+}
+
+.tab.learner-active::before {
+  content: '🎓';
+  margin-right: 4px;
+  font-size: 10px;
+}
+

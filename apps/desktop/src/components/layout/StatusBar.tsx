@@ -1,5 +1,7 @@
 import type { ProviderConfig } from '@antimatter/shared';
 import { useAppStore } from '@/store/appStore';
+import { learnerEngine } from '@/services/LearnerEngine';
+import { useSyncExternalStore } from 'react';
 
 interface Props {
   onToggleProviders: () => void;
@@ -7,7 +9,19 @@ interface Props {
 
 export function StatusBar({ onToggleProviders }: Props) {
   const { theme, workspacePath, openFiles, providerConfigs, selectedProviderId, indexingProgress } = useAppStore();
+  const learnerModeEnabled = useAppStore(s => s.learnerModeEnabled);
+  const activeFilePath = useAppStore(s => s.activeFilePath);
   const provider = providerConfigs.find((entry: ProviderConfig) => entry.id === selectedProviderId);
+
+  // Subscribe to learner engine for live progress
+  const sessions = useSyncExternalStore(
+    (cb) => learnerEngine.subscribe(cb),
+    () => learnerEngine.getSnapshot()
+  );
+
+  const activeSession = activeFilePath ? learnerEngine.getSession(activeFilePath) : undefined;
+  const learnerProgress = activeFilePath ? learnerEngine.getProgress(activeFilePath) : 0;
+  const learnerStatus = activeFilePath ? learnerEngine.getStatus(activeFilePath) : 'idle';
 
   return (
     <footer className="statusbar">
@@ -30,6 +44,16 @@ export function StatusBar({ onToggleProviders }: Props) {
         )}
       </div>
       <div className="statusbar__right">
+        {/* ─── Learner Mode Indicator ─── */}
+        {learnerModeEnabled && (
+          <span className={`learner-statusbar-badge ${learnerStatus}`}>
+            🎓 {learnerStatus === 'generating' 
+              ? 'Generating...' 
+              : learnerStatus === 'active' 
+                ? `Learning ${learnerProgress}%` 
+                : 'Learner Mode'}
+          </span>
+        )}
         <span>{openFiles.length} open tabs</span>
         <button className="status-link" onClick={onToggleProviders}>
           {provider ? `${provider.label} · ${provider.model}` : 'Configure provider'}
@@ -38,3 +62,4 @@ export function StatusBar({ onToggleProviders }: Props) {
     </footer>
   );
 }
+
