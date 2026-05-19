@@ -283,14 +283,14 @@ function buildGenerationPrompt(
 Your task is to generate a COMPLETE, production-quality implementation for a file based on its name and context.
 
 RULES:
-1. Generate ONLY the code — no markdown fences, no explanations, no comments like "// your code here"
-2. The code must be immediately runnable/compilable
-3. Use modern best practices for the language/framework
-4. Include proper imports, types, and exports
-5. Generate a realistic, practical implementation — not a skeleton
-6. The implementation should be educational and demonstrate good patterns
-7. Keep the implementation focused but complete (50-150 lines ideal)
-8. Do NOT wrap in markdown code blocks — output raw code only`;
+1. Generate ONLY the code — no markdown fences, no explanations.
+2. DO NOT INCLUDE ANY IN-CODE COMMENTS, BLOCK COMMENTS, OR DOCSTRINGS. The code must be completely free of comments (e.g. no comments explaining logic, no placeholders, no "// your code here").
+3. The code must be immediately runnable/compilable.
+4. Use modern best practices for the language/framework.
+5. Include proper imports, types, and exports.
+6. Generate a realistic, practical implementation — not a skeleton.
+7. Keep the implementation focused but complete (50-150 lines ideal).
+8. Do NOT wrap in markdown code blocks — output raw code only.`;
 
   const userPrompt = `Generate the complete implementation for: ${fileName}
 
@@ -299,7 +299,7 @@ ${frameworkHint}
 Purpose: ${purposeHint}
 ${projectContext}
 
-Generate the full, working implementation now. Output ONLY the raw code.`;
+Generate the full, working implementation now. Output ONLY the raw code. Do not write any comments or docstrings.`;
 
   return [
     { role: 'system', content: systemPrompt },
