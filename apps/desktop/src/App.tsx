@@ -26,10 +26,7 @@ import {
   loadSettings,
   saveSettings,
   writeWorkspaceFile,
-  readDirectory,
-  openFolderPicker,
-  saveFilePicker,
-  saveRecentProject
+  readDirectory
 } from './lib/tauri';
 
 async function calculateLineDiff(oldStr: string, newStr: string) {
@@ -192,74 +189,12 @@ export function App() {
   );
 
   /* ─── File Actions ─── */
-  const saveActiveFile = useCallback(async (isSaveAs = false) => {
+  const saveActiveFile = useCallback(async () => {
     const file = openFiles.find((entry) => entry.path === activeFilePath);
     if (!file) return;
-
-    const isUntitled = file.path.startsWith('untitled-');
-    let targetPath = file.path;
-
-    if (isSaveAs || isUntitled) {
-      const defaultName = isUntitled ? 'untitled.ts' : file.name;
-      const selectedPath = await saveFilePicker(defaultName);
-      if (!selectedPath) return;
-      targetPath = selectedPath;
-    }
-
-    try {
-      await writeWorkspaceFile(targetPath, file.content);
-
-      if (isSaveAs || isUntitled) {
-        const name = targetPath.split(/[\\/]/).pop() ?? targetPath;
-        const ext = name.split('.').pop()?.toLowerCase();
-        let language = 'plaintext';
-        switch (ext) {
-          case 'ts': case 'tsx': language = 'typescript'; break;
-          case 'js': case 'jsx': language = 'javascript'; break;
-          case 'rs': language = 'rust'; break;
-          case 'json': language = 'json'; break;
-          case 'md': language = 'markdown'; break;
-          case 'css': language = 'css'; break;
-          case 'html': language = 'html'; break;
-          case 'toml': language = 'ini'; break;
-          case 'py': language = 'python'; break;
-          case 'go': language = 'go'; break;
-          case 'yaml': case 'yml': language = 'yaml'; break;
-        }
-
-        useAppStore.setState((state) => {
-          const updatedOpenFiles = state.openFiles.map((f) => {
-            if (f.path === file.path) {
-              return {
-                ...f,
-                path: targetPath,
-                name,
-                language,
-                dirty: false
-              };
-            }
-            return f;
-          });
-
-          return {
-            openFiles: updatedOpenFiles,
-            activeFilePath: targetPath
-          };
-        });
-
-        if (workspacePath) {
-          try {
-            const entries = await readDirectory(workspacePath);
-            setWorkspaceEntries(entries);
-          } catch { /* ignore */ }
-        }
-      } else {
-        saveFileLocallyMarked(file.path);
-      }
-    } catch (err) {
-      console.error('Failed to save file:', err);
-    }
-  }, [activeFilePath, openFiles, saveFileLocallyMarked, workspacePath, setWorkspaceEntries]);
+    await writeWorkspaceFile(file.path, file.content);
+    saveFileLocallyMarked(file.path);
+  }, [activeFilePath, openFiles, saveFileLocallyMarked]);
 
   const closeActiveFile = useCallback(() => {
     const activePath = useAppStore.getState().activeFilePath;
@@ -288,16 +223,11 @@ export function App() {
     useAppStore.getState().openFile(file);
   }, []);
 
-  const openFolder = useCallback(async () => {
-    try {
-      const path = await openFolderPicker();
-      if (path) {
-        const entries = await readDirectory(path);
-        useAppStore.getState().setWorkspace(path, entries);
-        await saveRecentProject(path);
-      }
-    } catch (err) {
-      console.error('Failed to open folder:', err);
+  const openFolder = useCallback(() => {
+    const input = document.querySelector('.explorer-pathbar input') as HTMLInputElement | null;
+    if (input) {
+      input.focus();
+      input.select();
     }
   }, []);
 
@@ -307,7 +237,6 @@ export function App() {
     'mod+,': () => setSettingsOpen(true),
     'mod+b': () => toggleBottomPanel(),
     'mod+s': () => { void saveActiveFile(); },
-    'mod+shift+s': () => { void saveActiveFile(true); },
     'mod+w': () => closeActiveFile(),
     'mod+n': () => newFile()
   });
@@ -739,7 +668,6 @@ export function App() {
         onOpenProviders={() => setProvidersOpen(true)}
         onOpenFolder={openFolder}
         onSaveFile={() => { void saveActiveFile(); }}
-        onSaveFileAs={() => { void saveActiveFile(true); }}
         onNewFile={newFile}
         onCloseFile={closeActiveFile}
         onCloseAllFiles={closeAllFiles}
